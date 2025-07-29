@@ -37,7 +37,7 @@ func reportStream(sr *schema.StreamReader[*schema.Message]) string {
 
 func ReadUserInput() string {
 	reader := bufio.NewReader(os.Stdin)
-	var result string
+	var lines []string
 	for {
 		line, err := reader.ReadString('\n')
 		if err != nil {
@@ -47,7 +47,7 @@ func ReadUserInput() string {
 		if line == "" { // 遇到空行结束
 			break
 		}
-		result += line + `\n`
+		lines = append(lines, line)
 	}
-	return result + "\n"
+	return strings.Join(lines, `\n`)
 }
