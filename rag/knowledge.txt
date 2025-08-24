@@ -1,0 +1,5887 @@
+Eino: Components 组件
+大模型应用开发和传统应用开发最显著的区别在于大模型所具备的两大核心能力：
+
+基于语义的文本处理能力：能够理解和生成人类语言，处理非结构化的内容语义关系
+智能决策能力：能够基于上下文进行推理和判断，做出相应的行为决策
+这两项核心能力催生了三种主要的应用模式：
+
+直接对话模式：处理用户输入并生成相应回答
+知识处理模式：对文本文档进行语义化处理、存储和检索
+工具调用模式：基于上下文做出决策并调用相应工具
+这些模式高度概括了当前大模型应用的主要场景，为我们提供了抽象和标准化的基础。基于此，Eino 将这些常用能力抽象为可复用的「组件」（Components）
+
+组件抽象和这几种模式关系对应如下：
+
+对话处理类组件：
+
+模板化处理和大模型交互参数的组件抽象： ChatTemplate
+
+详见 Eino: ChatTemplate 使用说明
+
+直接和大模型交互的组件抽象： ChatModel
+
+详见 Eino: ChatModel 使用说明
+
+文本语义处理类组件：
+
+获取和处理文本文档的组件抽象： Document.Loader 、Document.Transformer
+
+详见 Eino: Document Loader 使用说明、Eino: Document Transformer 使用说明
+
+文本文档语义化处理的组件抽象： Embedding
+
+详见 Eino: Embedding 使用说明
+
+Embedding 之后将数据索引进行存储的组件抽象： Indexer
+
+详见 Eino: Indexer 使用说明
+
+将语义相关文本文档进行索引和召回的组件抽象： Retriever
+
+详见 Eino: Retriever 使用说明
+
+决策执行类组件：
+
+大模型能够做决策并调用工具的组件抽象：ToolsNode
+
+详见 Eino: ToolsNode 使用说明
+
+自定义组件：
+
+用户自定义代码逻辑的组件抽象：Lambda
+
+详见 Eino: Lambda 使用说明
+
+组件是大模型应用能力的提供者，是大模型应用构建过程中的砖和瓦，组件抽象的优劣决定了大模型应用开发的复杂度，Eino 的组件抽象秉持着以下设计原则：
+
+模块化和标准化，将一系列功能相同的能力抽象成统一的模块，组件间职能明确、边界清晰，支持灵活地组合。
+可扩展性，接口的设计保持尽可能小的模块能力约束，让组件的开发者能方便地实现自定义组件的开发。
+可复用性，把最常用的能力和实现进行封装，提供给开发者开箱即用的工具使用。
+组件的抽象可以让大模型应用开发形成比较固定的范式，降低认知复杂度，增强共同协作的效率。让组件的封装让开发者可以专注于业务逻辑的实现，避免重复造轮子，以快速构建高质量的大模型应用。
+
+
+
+
+Eino: ChatTemplate 使用说明
+基本介绍
+Prompt 组件是一个用于处理和格式化提示模板的组件。它的主要作用是将用户提供的变量值填充到预定义的消息模板中，生成用于与语言模型交互的标准消息格式。这个组件可用于以下场景：
+
+构建结构化的系统提示
+处理多轮对话的模板 (包括 history)
+实现可复用的提示模式
+组件定义
+接口定义
+代码位置：eino/components/prompt/interface.go
+
+type ChatTemplate interface {
+    Format(ctx context.Context, vs map[string]any, opts ...Option) ([]*schema.Message, error)
+}
+Format 方法
+功能：将变量值填充到消息模板中
+参数：
+ctx：上下文对象，用于传递请求级别的信息，同时也用于传递 Callback Manager
+vs：变量值映射，用于填充模板中的占位符
+opts：可选参数，用于配置格式化行为
+返回值：
+[]*schema.Message：格式化后的消息列表
+error：格式化过程中的错误信息
+内置模板化方式
+Prompt 组件内置支持三种模板化方式：
+
+FString 格式 (schema.FString)
+
+使用 {variable} 语法进行变量替换
+简单直观，适合基础文本替换场景
+示例："你是一个{role}，请帮我{task}。"
+GoTemplate 格式 (schema.GoTemplate)
+
+使用 Go 标准库的 text/template 语法
+支持条件判断、循环等复杂逻辑
+示例："{{if .expert}}作为专家{{end}}请{{.action}}"
+Jinja2 格式 (schema.Jinja2)
+
+使用 Jinja2 模板语法
+示例："{% if level == 'expert' %}以专家的角度{% endif %}分析{{topic}}"
+公共 Option
+Prompt 组件使用 Option 来定义可选参数， ChatTemplate 没有公共的 option 抽象。每个具体的实现可以定义自己的特定 Option，通过 WrapImplSpecificOptFn 函数包装成统一的 Option 类型。
+
+使用方式
+ChatTemplate 一般用于 ChatModel 之前做上下文准备的。
+
+创建方法
+prompt.FromMessages()
+用于把多个 message 变成一个 chat template。
+schema.Message{}
+schema.Message 是实现了 Format 接口的结构体，因此可直接构建 schema.Message{} 作为 template
+schema.SystemMessage()
+此方法是构建 role 为 “system” 的 message 快捷方法
+schema.AssistantMessage()
+此方法是构建 role 为 “assistant” 的 message 快捷方法
+schema.UserMessage()
+此方法是构建 role 为 “user” 的 message 快捷方法
+schema.ToolMessage()
+此方法是构建 role 为 “tool” 的 message 快捷方法
+schema.MessagesPlaceholder()
+可用于把一个 []*schema.Message 插入到 message 列表中，常用于插入历史对话
+单独使用
+import (
+    "github.com/cloudwego/eino/components/prompt"
+    "github.com/cloudwego/eino/schema"
+)
+
+// 创建模板
+template := prompt.FromMessages(schema.FString,
+    schema.SystemMessage("你是一个{role}。"),
+    schema.MessagesPlaceholder("history_key", false),
+    &schema.Message{
+        Role:    schema.User,
+        Content: "请帮我{task}。",
+    },
+)
+
+// 准备变量
+variables := map[string]any{
+    "role": "专业的助手",
+    "task": "写一首诗",
+    "history_key": []*schema.Message{{Role: schema.User, Content: "告诉我油画是什么?"}, {Role: schema.Assistant, Content: "油画是xxx"}},
+}
+
+// 格式化模板
+messages, err := template.Format(context.Background(), variables)
+在编排中使用
+import (
+    "github.com/cloudwego/eino/components/prompt"
+    "github.com/cloudwego/eino/schema"
+    "github.com/cloudwego/eino/compose"
+)
+
+// 在 Chain 中使用
+chain := compose.NewChain[map[string]any, []*schema.Message]()
+chain.AppendChatTemplate(template)
+
+// 编译并运行
+runnable, err := chain.Compile()
+if err != nil {
+    return err
+}
+result, err := runnable.Invoke(ctx, variables)
+
+// 在 Graph 中使用
+graph := compose.NewGraph[map[string]any, []*schema.Message]()
+graph.AddChatTemplateNode("template_node", template)
+从前驱节点的输出中获取数据
+在 AddNode 时，可以通过添加 WithOutputKey 这个 Option 来把节点的输出转成 Map：
+
+// 这个节点的输出，会从 string 改成 map[string]any，
+// 且 map 中只有一个元素，key 是 your_output_key，value 是实际的的节点输出的 string
+graph.AddLambdaNode("your_node_key", compose.InvokableLambda(func(ctx context.Context, input []*schema.Message) (str string, err error) {
+    // your logic
+    return
+}), compose.WithOutputKey("your_output_key"))
+把前驱节点的输出转成 map[string]any 并设置好 key 后，在后置的 ChatTemplate 节点中使用该 key 对应的 value。
+
+Option 和 Callback 使用
+Callback 使用示例
+import (
+    "context"
+
+    callbackHelper "github.com/cloudwego/eino/utils/callbacks"
+    "github.com/cloudwego/eino/callbacks"
+    "github.com/cloudwego/eino/compose"
+    "github.com/cloudwego/eino/components/prompt"
+)
+
+// 创建 callback handler
+handler := &callbackHelper.PromptCallbackHandler{
+    OnStart: func(ctx context.Context, info *callbacks.RunInfo, input *prompt.CallbackInput) context.Context {
+        fmt.Printf("开始格式化模板，变量: %v\n", input.Variables)
+        return ctx
+    },
+    OnEnd: func(ctx context.Context, info *callbacks.RunInfo, output *prompt.CallbackOutput) context.Context {
+        fmt.Printf("模板格式化完成，生成消息数量: %d\n", len(output.Result))
+        return ctx
+    },
+}
+
+// 使用 callback handler
+helper := callbackHelper.NewHandlerHelper().
+    Prompt(handler).
+    Handler()
+
+// 在运行时使用
+runnable, err := chain.Compile()
+if err != nil {
+    return err
+}
+result, err := runnable.Invoke(ctx, variables, compose.WithCallbacks(helper))
+自行实现参考
+Option 机制
+若有需要，组件实现者可实现自定义 prompt option：
+
+import (
+    "github.com/cloudwego/eino/components/prompt"
+)
+
+// 定义 Option 结构体
+type MyPromptOptions struct {
+    StrictMode bool
+    DefaultValues map[string]string
+}
+
+// 定义 Option 函数
+func WithStrictMode(strict bool) prompt.Option {
+    return prompt.WrapImplSpecificOptFn(func(o *MyPromptOptions) {
+        o.StrictMode = strict
+    })
+}
+
+func WithDefaultValues(values map[string]string) prompt.Option {
+    return prompt.WrapImplSpecificOptFn(func(o *MyPromptOptions) {
+        o.DefaultValues = values
+    })
+}
+Callback 处理
+Prompt 实现需要在适当的时机触发回调，以下结构是组件定义好的：
+
+代码位置：eino/components/prompt/callback_extra.go
+
+// 定义回调输入输出
+type CallbackInput struct {
+    Variables map[string]any
+    Templates []schema.MessagesTemplate
+    Extra map[string]any
+}
+
+type CallbackOutput struct {
+    Result []*schema.Message
+    Templates []schema.MessagesTemplate
+    Extra map[string]any
+}
+完整实现示例
+type MyPrompt struct {
+    templates []schema.MessagesTemplate
+    formatType schema.FormatType
+    strictMode bool
+    defaultValues map[string]string
+}
+
+func NewMyPrompt(config *MyPromptConfig) (*MyPrompt, error) {
+    return &MyPrompt{
+        templates: config.Templates,
+        formatType: config.FormatType,
+        strictMode: config.DefaultStrictMode,
+        defaultValues: config.DefaultValues,
+    }, nil
+}
+
+func (p *MyPrompt) Format(ctx context.Context, vs map[string]any, opts ...prompt.Option) ([]*schema.Message, error) {
+    // 1. 处理 Option
+    options := &MyPromptOptions{
+        StrictMode: p.strictMode,
+        DefaultValues: p.defaultValues,
+    }
+    options = prompt.GetImplSpecificOptions(options, opts...)
+    
+    // 2. 获取 callback manager
+    cm := callbacks.ManagerFromContext(ctx)
+    
+    // 3. 开始格式化前的回调
+    ctx = cm.OnStart(ctx, info, &prompt.CallbackInput{
+        Variables: vs,
+        Templates: p.templates,
+    })
+    
+    // 4. 执行格式化逻辑
+    messages, err := p.doFormat(ctx, vs, options)
+    
+    // 5. 处理错误和完成回调
+    if err != nil {
+        ctx = cm.OnError(ctx, info, err)
+        return nil, err
+    }
+    
+    ctx = cm.OnEnd(ctx, info, &prompt.CallbackOutput{
+        Result: messages,
+        Templates: p.templates,
+    })
+    
+    return messages, nil
+}
+
+func (p *MyPrompt) doFormat(ctx context.Context, vs map[string]any, opts *MyPromptOptions) ([]*schema.Message, error) {
+    // 实现自己定义逻辑
+    return messages, nil
+}
+
+
+
+Eino: ChatModel 使用说明
+基本介绍
+Model 组件是一个用于与大语言模型交互的组件。它的主要作用是将用户的输入消息发送给语言模型，并获取模型的响应。这个组件在以下场景中发挥重要作用：
+
+自然语言对话
+文本生成和补全
+工具调用的参数生成
+多模态交互（文本、图片、音频等）
+组件定义
+接口定义
+代码位置：eino/components/model/interface.go
+
+type BaseChatModel interface {
+    Generate(ctx context.Context, input []*schema.Message, opts ...Option) (*schema.Message, error)
+    Stream(ctx context.Context, input []*schema.Message, opts ...Option) (
+        *schema.StreamReader[*schema.Message], error)
+}
+
+type ToolCallingChatModel interface {
+    BaseChatModel
+
+    // WithTools returns a new ToolCallingChatModel instance with the specified tools bound.
+    // This method does not modify the current instance, making it safer for concurrent use.
+    WithTools(tools []*schema.ToolInfo) (ToolCallingChatModel, error)
+}
+Generate 方法
+功能：生成完整的模型响应
+参数：
+ctx：上下文对象，用于传递请求级别的信息，同时也用于传递 Callback Manager
+input：输入消息列表
+opts：可选参数，用于配置模型行为
+返回值：
+*schema.Message：模型生成的响应消息
+error：生成过程中的错误信息
+Stream 方法
+功能：以流式方式生成模型响应
+参数：与 Generate 方法相同
+返回值：
+*schema.StreamReader[*schema.Message]：模型响应的流式读取器
+error：生成过程中的错误信息
+WithTools 方法
+功能：为模型绑定可用的工具
+参数：
+tools：工具信息列表
+返回值：
+ToolCallingChatModel: 绑定了 tools 后的 chatmodel
+error：绑定过程中的错误信息
+Message 结构体
+代码位置：eino/schema/message.go
+
+type Message struct {
+    // Role 表示消息的角色（system/user/assistant/tool）
+    Role RoleType
+    // Content 是消息的文本内容
+    Content string
+    // MultiContent 是多模态内容，支持文本、图片、音频等
+    MultiContent []ChatMessagePart
+    // Name 是消息的发送者名称
+    Name string
+    // ToolCalls 是 assistant 消息中的工具调用信息
+    ToolCalls []ToolCall
+    // ToolCallID 是 tool 消息的工具调用 ID
+    ToolCallID string
+    // ResponseMeta 包含响应的元信息
+    ResponseMeta *ResponseMeta
+    // Extra 用于存储额外信息
+    Extra map[string]any
+}
+Message 结构体是模型交互的基本结构，支持：
+
+多种角色：system（系统）、user（用户）、assistant（ai）、tool（工具）
+多模态内容：文本、图片、音频、视频、文件
+工具调用：支持模型调用外部工具和函数
+元信息：包含响应原因、token 使用统计等
+公共 Option
+Model 组件提供了一组公共 Option 用于配置模型行为：
+
+代码位置：eino/components/model/option.go
+
+type Options struct {
+    // Temperature 控制输出的随机性
+    Temperature *float32
+    // MaxTokens 控制生成的最大 token 数量
+    MaxTokens *int
+    // Model 指定使用的模型名称
+    Model *string
+    // TopP 控制输出的多样性
+    TopP *float32
+    // Stop 指定停止生成的条件
+    Stop []string
+}
+可以通过以下方式设置 Option：
+
+// 设置温度
+WithTemperature(temperature float32) Option
+
+// 设置最大 token 数
+WithMaxTokens(maxTokens int) Option
+
+// 设置模型名称
+WithModel(name string) Option
+
+// 设置 top_p 值
+WithTopP(topP float32) Option
+
+// 设置停止词
+WithStop(stop []string) Option
+使用方式
+单独使用
+import (
+    "context"
+    "fmt"
+    "io"
+
+    "github.com/cloudwego/eino-ext/components/model/openai"
+    "github.com/cloudwego/eino/components/model"
+    "github.com/cloudwego/eino/schema"
+)
+
+// 初始化模型 (以openai为例)
+cm, err := openai.NewChatModel(ctx, &openai.ChatModelConfig{
+    // 配置参数
+})
+
+// 准备输入消息
+messages := []*schema.Message{
+    {
+       Role:    schema.System,
+       Content: "你是一个有帮助的助手。",
+    },
+    {
+       Role:    schema.User,
+       Content: "你好！",
+    },
+}
+
+// 生成响应
+response, err := cm.Generate(ctx, messages, model.WithTemperature(0.8))
+
+// 响应处理
+fmt.Print(response.Content)
+
+// 流式生成
+streamResult, err := cm.Stream(ctx, messages)
+
+defer streamResult.Close()
+
+for {
+    chunk, err := streamResult.Recv()
+    if err == io.EOF {
+       break
+    }
+    if err != nil {
+       // 错误处理
+    }
+    // 响应片段处理
+    fmt.Print(chunk.Content)
+}
+在编排中使用
+import (
+    "github.com/cloudwego/eino/schema"
+    "github.com/cloudwego/eino/compose"
+)
+
+/*** 初始化ChatModel
+* cm, err := xxx
+*/
+
+// 在 Chain 中使用
+c := compose.NewChain[[]*schema.Message, *schema.Message]()
+c.AppendChatModel(cm)
+
+
+// 在 Graph 中使用
+g := compose.NewGraph[[]*schema.Message, *schema.Message]()
+g.AddChatModelNode("model_node", cm)
+Option 和 Callback 使用
+Option 使用示例
+import "github.com/cloudwego/eino/components/model"
+
+// 使用 Option
+response, err := cm.Generate(ctx, messages,
+    model.WithTemperature(0.7),
+    model.WithMaxTokens(2000),
+    model.WithModel("gpt-4"),
+)
+Callback 使用示例
+import (
+    "context"
+    "fmt"
+
+    "github.com/cloudwego/eino/callbacks"
+    "github.com/cloudwego/eino/components/model"
+    "github.com/cloudwego/eino/compose"
+    "github.com/cloudwego/eino/schema"
+    callbacksHelper "github.com/cloudwego/eino/utils/callbacks"
+)
+
+// 创建 callback handler
+handler := &callbacksHelper.ModelCallbackHandler{
+    OnStart: func(ctx context.Context, info *callbacks.RunInfo, input *model.CallbackInput) context.Context {
+       fmt.Printf("开始生成，输入消息数量: %d\n", len(input.Messages))
+       return ctx
+    },
+    OnEnd: func(ctx context.Context, info *callbacks.RunInfo, output *model.CallbackOutput) context.Context {
+       fmt.Printf("生成完成，Token 使用情况: %+v\n", output.TokenUsage)
+       return ctx
+    },
+    OnEndWithStreamOutput: func(ctx context.Context, info *callbacks.RunInfo, output *schema.StreamReader[*model.CallbackOutput]) context.Context {
+       fmt.Println("开始接收流式输出")
+       defer output.Close()
+       return ctx
+    },
+}
+
+// 使用 callback handler
+helper := callbacksHelper.NewHandlerHelper().
+    ChatModel(handler).
+    Handler()
+
+/*** compose a chain
+* chain := NewChain
+* chain.appendxxx().
+*       appendxxx().
+*       ...
+*/
+
+// 在运行时使用
+runnable, err := chain.Compile()
+if err != nil {
+    return err
+}
+result, err := runnable.Invoke(ctx, messages, compose.WithCallbacks(helper))
+已有实现
+OpenAI ChatModel: 使用 OpenAI 的 GPT 系列模型 ChatModel - OpenAI
+Ollama ChatModel: 使用 Ollama 本地模型 ChatModel - Ollama
+ARK ChatModel: 使用 ARK 平台的模型服务 ChatModel - ARK
+更多查看： Eino ChatModel
+自行实现参考
+实现自定义的 ChatModel 组件时，需要注意以下几点：
+
+注意要实现公共的 option
+注意实现 callback 机制
+在流式输出时记得完成输出后要 close writer
+Option 机制
+自定义 ChatModel 如果需要公共 Option 以外的 Option，可以利用组件抽象的工具函数实现自定义的 Option，例如：
+
+import (
+    "time"
+
+    "github.com/cloudwego/eino/components/model"
+)
+
+// 定义 Option 结构体
+type MyChatModelOptions struct {
+    Options    *model.Options
+    RetryCount int
+    Timeout    time.Duration
+}
+
+// 定义 Option 函数
+func WithRetryCount(count int) model.Option {
+    return model.WrapImplSpecificOptFn(func(o *MyChatModelOptions) {
+       o.RetryCount = count
+    })
+}
+
+func WithTimeout(timeout time.Duration) model.Option {
+    return model.WrapImplSpecificOptFn(func(o *MyChatModelOptions) {
+       o.Timeout = timeout
+    })
+}
+Callback 处理
+ChatModel 实现需要在适当的时机触发回调，以下结构由 ChatModel 组件定义：
+
+import (
+    "github.com/cloudwego/eino/schema"
+)
+
+// 定义回调输入输出
+type CallbackInput struct {
+    Messages    []*schema.Message
+    Model       string
+    Temperature *float32
+    MaxTokens   *int
+    Extra       map[string]any
+}
+
+type CallbackOutput struct {
+    Message    *schema.Message
+    TokenUsage *schema.TokenUsage
+    Extra      map[string]any
+}
+完整实现示例
+import (
+    "context"
+    "errors"
+    "net/http"
+    "time"
+
+    "github.com/cloudwego/eino/callbacks"
+    "github.com/cloudwego/eino/components/model"
+    "github.com/cloudwego/eino/schema"
+)
+
+type MyChatModel struct {
+    client     *http.Client
+    apiKey     string
+    baseURL    string
+    model      string
+    timeout    time.Duration
+    retryCount int
+}
+
+type MyChatModelConfig struct {
+    APIKey string
+}
+
+func NewMyChatModel(config *MyChatModelConfig) (*MyChatModel, error) {
+    if config.APIKey == "" {
+       return nil, errors.New("api key is required")
+    }
+
+    return &MyChatModel{
+       client: &http.Client{},
+       apiKey: config.APIKey,
+    }, nil
+}
+
+func (m *MyChatModel) Generate(ctx context.Context, messages []*schema.Message, opts ...model.Option) (*schema.Message, error) {
+    // 1. 处理选项
+    options := &MyChatModelOptions{
+       Options: &model.Options{
+          Model: &m.model,
+       },
+       RetryCount: m.retryCount,
+       Timeout:    m.timeout,
+    }
+    options.Options = model.GetCommonOptions(options.Options, opts...)
+    options = model.GetImplSpecificOptions(options, opts...)
+
+    // 2. 开始生成前的回调
+    ctx = callbacks.OnStart(ctx, &model.CallbackInput{
+       Messages: messages,
+       Config: &model.Config{
+          Model: *options.Options.Model,
+       },
+    })
+
+    // 3. 执行生成逻辑
+    response, err := m.doGenerate(ctx, messages, options)
+
+    // 4. 处理错误和完成回调
+    if err != nil {
+       ctx = callbacks.OnError(ctx, err)
+       return nil, err
+    }
+
+    ctx = callbacks.OnEnd(ctx, &model.CallbackOutput{
+       Message: response,
+    })
+
+    return response, nil
+}
+
+func (m *MyChatModel) Stream(ctx context.Context, messages []*schema.Message, opts ...model.Option) (*schema.StreamReader[*schema.Message], error) {
+    // 1. 处理选项
+    options := &MyChatModelOptions{
+       Options: &model.Options{
+          Model: &m.model,
+       },
+       RetryCount: m.retryCount,
+       Timeout:    m.timeout,
+    }
+    options.Options = model.GetCommonOptions(options.Options, opts...)
+    options = model.GetImplSpecificOptions(options, opts...)
+
+    // 2. 开始流式生成前的回调
+    ctx = callbacks.OnStart(ctx, &model.CallbackInput{
+       Messages: messages,
+       Config: &model.Config{
+          Model: *options.Options.Model,
+       },
+    })
+
+    // 3. 创建流式响应
+    // Pipe产生一个StreamReader和一个StreamWrite，向StreamWrite中写入可以从StreamReader中读到，二者并发安全。
+    // 实现中异步向StreamWrite中写入生成内容，返回StreamReader作为返回值
+    // ***StreamReader是一个数据流，仅可读一次，组件自行实现Callback时，既需要通过OnEndWithCallbackOutput向callback传递数据流，也需要向返回一个数据流，需要对数据流进行一次拷贝
+    // 考虑到此种情形总是需要拷贝数据流，OnEndWithCallbackOutput函数会在内部拷贝并返回一个未被读取的流
+    // 以下代码演示了一种流处理方式，处理方式不唯一
+    sr, sw := schema.Pipe[*model.CallbackOutput](1)
+
+    // 4. 启动异步生成
+    go func() {
+       defer sw.Close()
+
+       // 流式写入
+       m.doStream(ctx, messages, options, sw)
+    }()
+
+    // 5. 完成回调
+    _, nsr := callbacks.OnEndWithStreamOutput(ctx, sr)
+
+    return schema.StreamReaderWithConvert(nsr, func(t *model.CallbackOutput) (*schema.Message, error) {
+       return t.Message, nil
+    }), nil
+}
+
+func (m *MyChatModel)  WithTools(tools []*schema.ToolInfo) (model.ToolCallingChatModel, error) {
+    // 实现工具绑定逻辑
+    return nil, nil
+}
+
+func (m *MyChatModel) doGenerate(ctx context.Context, messages []*schema.Message, opts *MyChatModelOptions) (*schema.Message, error) {
+    // 实现生成逻辑
+    return nil, nil
+}
+
+func (m *MyChatModel) doStream(ctx context.Context, messages []*schema.Message, opts *MyChatModelOptions, sr *schema.StreamWriter[*model.CallbackOutput]) {
+    // 流式生成文本写入sr中
+    return
+}
+
+
+
+
+
+
+
+Eino: Document Loader 使用说明
+基本介绍
+Document Loader 是一个用于加载文档的组件。它的主要作用是从不同来源（如网络 URL、本地文件等）加载文档内容，并将其转换为标准的文档格式。这个组件在处理需要从各种来源获取文档内容的场景中发挥重要作用，比如:
+
+从网络 URL 加载网页内容
+读取本地 PDF、Word 等格式的文档
+组件定义
+接口定义
+代码位置：eino/components/document/parser/interface.go
+
+type Loader interface {
+    Load(ctx context.Context, src Source, opts ...LoaderOption) ([]*schema.Document, error)
+}
+Load 方法
+功能：从指定的数据源加载文档
+参数：
+ctx：上下文对象，用于传递请求级别的信息，同时也用于传递 Callback Manager
+src：文档来源，包含文档的 URI 信息
+opts：加载选项，用于配置加载行为
+返回值：
+[]*schema.Document：加载的文档列表
+error：加载过程中的错误信息
+Source 结构体
+type Source struct {
+    URI string
+}
+Source 结构体定义了文档的来源信息：
+
+URI：文档的统一资源标识符，可以是网络 URL 或本地文件路径
+Document 结构体
+type Document struct {
+    // ID 是文档的唯一标识符
+    ID string
+    // Content 是文档的内容
+    Content string
+    // MetaData 用于存储文档的元数据信息
+    MetaData map[string]any
+}
+Document 结构体是文档的标准格式，包含以下重要字段：
+
+ID：文档的唯一标识符，用于在系统中唯一标识一个文档
+Content：文档的实际内容
+MetaData：文档的元数据，可以存储如下信息：
+文档的来源信息
+文档的向量表示（用于向量检索）
+文档的分数（用于排序）
+文档的子索引（用于分层检索）
+其他自定义元数据
+公共选项
+Loader 组件使用 LoaderOption 来定义加载选项。Loader 目前没有公共的 Option，每个具体的实现可以定义自己的特定选项，通过 WrapLoaderImplSpecificOptFn 函数包装成统一的 LoaderOption 类型。
+
+使用方式
+单独使用
+代码位置：eino-ext/components/document/loader/file/examples/fileloader
+
+import (
+    "github.com/cloudwego/eino/components/document"
+    "github.com/cloudwego/eino-ext/components/document/loader/file"
+)
+
+// 初始化 loader (以file loader为例)
+loader, _ := file.NewFileLoader(ctx, &file.FileLoaderConfig{
+    // 配置参数
+    UseNameAsID: true,
+})
+
+// 加载文档
+filePath := "../../testdata/test.md"
+docs, _ := loader.Load(ctx, document.Source{
+    URI: filePath,
+})
+
+log.Printf("doc content: %v", docs[0].Content)
+在编排中使用
+// 在 Chain 中使用
+chain := compose.NewChain[document.Source, []*schema.Document]()
+chain.AppendLoader(loader)
+
+// 编译并运行
+runnable, _ := chain.Compile()
+
+result, _ := runnable.Invoke(ctx, input)
+
+// 在 Graph 中使用
+graph := compose.NewGraph[string, []*schema.Document]()
+graph.AddLoaderNode("loader_node", loader)
+Option 和 Callback 使用
+Callback 使用示例
+代码位置：eino-ext/components/document/loader/file/examples/fileloader
+
+import (
+    "github.com/cloudwego/eino/callbacks"
+    "github.com/cloudwego/eino/components/document"
+    "github.com/cloudwego/eino/compose"
+    "github.com/cloudwego/eino/schema"
+    callbacksHelper "github.com/cloudwego/eino/utils/callbacks"
+
+    "github.com/cloudwego/eino-ext/components/document/loader/file"
+)
+
+// 创建 callback handler
+handler := &callbacksHelper.LoaderCallbackHandler{
+    OnStart: func(ctx context.Context, info *callbacks.RunInfo, input *document.LoaderCallbackInput) context.Context {
+       log.Printf("start loading docs...: %s\n", input.Source.URI)
+       return ctx
+    },
+    OnEnd: func(ctx context.Context, info *callbacks.RunInfo, output *document.LoaderCallbackOutput) context.Context {
+       log.Printf("complete loading docs，total loaded docs: %d\n", len(output.Docs))
+       return ctx
+    },
+    // OnError
+}
+
+// 使用 callback handler
+helper := callbacksHelper.NewHandlerHelper().
+    Loader(handler).
+    Handler()
+
+chain := compose.NewChain[document.Source, []*schema.Document]()
+chain.AppendLoader(loader)
+// 在运行时使用
+run, _ := chain.Compile(ctx)
+
+outDocs, _ := run.Invoke(ctx, document.Source{
+    URI: filePath,
+}, compose.WithCallbacks(helper))
+
+log.Printf("doc content: %v", outDocs[0].Content)
+已有实现
+File Loader: 用于加载本地文件系统中的文档 Loader - local file
+Web Loader: 用于加载网络 URL 指向的文档 Loader - web url
+S3 Loader: 用于加载存储在 S3 兼容存储系统中的文档 Loader - amazon s3
+自行实现参考
+自行实现 loader 组件时，需要注意 option 机制和 callback 的处理。
+
+option 机制
+自定义 Loader 需要实现自己的 Option 参数机制：
+
+// 定义选项结构体
+type MyLoaderOptions struct {
+    Timeout time.Duration
+    RetryCount int
+}
+
+// 定义选项函数
+func WithTimeout(timeout time.Duration) document.LoaderOption {
+    return document.WrapLoaderImplSpecificOptFn(func(o *MyLoaderOptions) {
+        o.Timeout = timeout
+    })
+}
+
+func WithRetryCount(count int) document.LoaderOption {
+    return document.WrapLoaderImplSpecificOptFn(func(o *MyLoaderOptions) {
+        o.RetryCount = count
+    })
+}
+Callback 处理
+Loader 实现需要在适当的时机触发回调：
+
+代码位置：eino/components/document/callback_extra_loader.go
+
+// 这是由loader组件定义的回调输入输出, 在实现时需要满足参数的含义
+type LoaderCallbackInput struct {
+    Source Source
+    Extra map[string]any
+}
+
+type LoaderCallbackOutput struct {
+    Source Source
+    Docs []*schema.Document
+    Extra map[string]any
+}
+完整实现示例
+import (
+    "github.com/cloudwego/eino/callbacks"
+    "github.com/cloudwego/eino/components/document"
+    "github.com/cloudwego/eino/schema"
+)
+
+func NewCustomLoader(config *Config) (*CustomLoader, error) {
+    return &CustomLoader{
+       timeout:    config.DefaultTimeout,
+       retryCount: config.DefaultRetryCount,
+    }, nil
+}
+
+type CustomLoader struct {
+    timeout    time.Duration
+    retryCount int
+}
+
+type Config struct {
+    DefaultTimeout    time.Duration
+    DefaultRetryCount int
+}
+
+func (l *CustomLoader) Load(ctx context.Context, src document.Source, opts ...document.LoaderOption) ([]*schema.Document, error) {
+    // 1. 处理 option
+    options := &customLoaderOptions{
+       Timeout:    l.timeout,
+       RetryCount: l.retryCount,
+    }
+    options = document.GetLoaderImplSpecificOptions(options, opts...)
+    var err error
+
+    // 2. 处理错误，并进行错误回调方法
+    defer func() {
+       if err != nil {
+          callbacks.OnError(ctx, err)
+       }
+    }()
+
+    // 3. 开始加载前的回调
+    ctx = callbacks.OnStart(ctx, &document.LoaderCallbackInput{
+       Source: src,
+    })
+
+    // 4. 执行加载逻辑
+    docs, err := l.doLoad(ctx, src, options)
+
+    if err != nil {
+       return nil, err
+    }
+
+    ctx = callbacks.OnEnd(ctx, &document.LoaderCallbackOutput{
+       Source: src,
+       Docs:   docs,
+    })
+
+    return docs, nil
+}
+
+func (l *CustomLoader) doLoad(ctx context.Context, src document.Source, opts *customLoaderOptions) ([]*schema.Document, error) {
+    // 实现文档加载逻辑
+    // 1. 加载文档内容
+    // 2. 构造 Document 对象，注意可在 MetaData 中保存文档来源等重要信息
+    return []*schema.Document{{
+       Content: "Hello World",
+    }}, nil
+}
+
+
+
+
+
+
+Eino: Document Transformer 使用说明
+基本介绍
+Document Transformer 是一个用于文档转换和处理的组件。它的主要作用是对输入的文档进行各种转换操作，如分割、过滤、合并等，从而得到满足特定需求的文档。这个组件可用于以下场景中：
+
+将长文档分割成小段落以便于处理
+根据特定规则过滤文档内容
+对文档内容进行结构化转换
+提取文档中的特定部分
+组件定义
+接口定义
+代码位置：eino/components/document/interface.go
+
+type Transformer interface {
+    Transform(ctx context.Context, src []*schema.Document, opts ...TransformerOption) ([]*schema.Document, error)
+}
+Transform 方法
+功能：对输入的文档进行转换处理
+参数：
+ctx：上下文对象，用于传递请求级别的信息，同时也用于传递 Callback Manager
+src：待处理的文档列表
+opts：可选参数，用于配置转换行为
+返回值：
+[]*schema.Document：转换后的文档列表
+error：转换过程中的错误信息
+Document 结构体
+type Document struct {
+    // ID 是文档的唯一标识符
+    ID string    
+    // Content 是文档的内容
+    Content string
+    // MetaData 用于存储文档的元数据信息
+    MetaData map[string]any
+}
+Document 结构体是文档的标准格式，包含以下重要字段：
+
+ID：文档的唯一标识符，用于在系统中唯一标识一个文档
+Content：文档的实际内容
+MetaData：文档的元数据，可以存储如下信息：
+文档的来源信息
+文档的向量表示（用于向量检索）
+文档的分数（用于排序）
+文档的子索引（用于分层检索）
+其他自定义元数据
+公共 Option
+Transformer 组件使用 TransformerOption 来定义可选参数，目前没有公共的 option。每个具体的实现可以定义自己的特定 Option，通过 WrapTransformerImplSpecificOptFn 函数包装成统一的 TransformerOption 类型。
+
+使用方式
+单独使用
+代码位置：eino-ext/components/document/transformer/splitter/markdown/examples/headersplitter
+
+import (
+    "github.com/cloudwego/eino/schema"
+    "github.com/cloudwego/eino-ext/components/document/transformer/splitter/markdown"
+)
+
+// 初始化 transformer (以 markdown 为例)
+transformer, _ := markdown.NewHeaderSplitter(ctx, &markdown.HeaderConfig{
+    // 配置参数
+    Headers: map[string]string{
+       "##": "",
+    },
+})
+
+markdownDoc := &schema.Document{
+    Content: "## Title 1\nHello Word\n## Title 2\nWord Hello",
+}
+// 转换文档
+transformedDocs, _ := transformer.Transform(ctx, []*schema.Document{markdownDoc})
+
+for idx, doc := range transformedDocs {
+    log.Printf("doc segment %v: %v", idx, doc.Content)
+}
+在编排中使用
+// 在 Chain 中使用
+chain := compose.NewChain[[]*schema.Document, []*schema.Document]()
+chain.AppendDocumentTransformer(transformer)
+
+// 在 Graph 中使用
+graph := compose.NewGraph[[]*schema.Document, []*schema.Document]()
+graph.AddDocumentTransformerNode("transformer_node", transformer)
+Option 和 Callback 使用
+Callback 使用示例
+代码位置：eino-ext/components/document/transformer/splitter/markdown/examples/headersplitter
+
+import (
+    "github.com/cloudwego/eino/callbacks"
+    "github.com/cloudwego/eino/components/document"
+    "github.com/cloudwego/eino/compose"
+    "github.com/cloudwego/eino/schema"
+    callbacksHelper "github.com/cloudwego/eino/utils/callbacks"
+
+    "github.com/cloudwego/eino-ext/components/document/transformer/splitter/markdown"
+)
+
+// 创建 callback handler
+handler := &callbacksHelper.TransformerCallbackHandler{
+    OnStart: func(ctx context.Context, info *callbacks.RunInfo, input *document.TransformerCallbackInput) context.Context {
+       log.Printf("input access, len: %v, content: %s\n", len(input.Input), input.Input[0].Content)
+       return ctx
+    },
+    OnEnd: func(ctx context.Context, info *callbacks.RunInfo, output *document.TransformerCallbackOutput) context.Context {
+       log.Printf("output finished, len: %v\n", len(output.Output))
+       return ctx
+    },
+    // OnError
+}
+
+// 使用 callback handler
+helper := callbacksHelper.NewHandlerHelper().
+    Transformer(handler).
+    Handler()
+
+chain := compose.NewChain[[]*schema.Document, []*schema.Document]()
+chain.AppendDocumentTransformer(transformer)
+
+// 在运行时使用
+run, _ := chain.Compile(ctx)
+
+outDocs, _ := run.Invoke(ctx, []*schema.Document{markdownDoc}, compose.WithCallbacks(helper))
+
+for idx, doc := range outDocs {
+    log.Printf("doc segment %v: %v", idx, doc.Content)
+}
+已有实现
+Markdown Header Splitter: 基于 Markdown 标题进行文档分割 Splitter - markdown
+Text Splitter: 基于文本长度或分隔符进行文档分割 Splitter - semantic
+Document Filter: 基于规则过滤文档内容 Splitter - recursive
+自行实现参考
+实现自定义的 Transformer 组件时，需要注意以下几点：
+
+option 的处理
+callback 的处理
+Option 机制
+自定义 Transformer 需要实现自己的 Option 机制：
+
+// 定义 Option 结构体
+type MyTransformerOptions struct {
+    ChunkSize int
+    Overlap int
+    MinChunkLength int
+}
+
+// 定义 Option 函数
+func WithChunkSize(size int) document.TransformerOption {
+    return document.WrapTransformerImplSpecificOptFn(func(o *MyTransformerOptions) {
+        o.ChunkSize = size
+    })
+}
+
+func WithOverlap(overlap int) document.TransformerOption {
+    return document.WrapTransformerImplSpecificOptFn(func(o *MyTransformerOptions) {
+        o.Overlap = overlap
+    })
+}
+Callback 处理
+Transformer 实现需要在适当的时机触发回调：
+
+// 这是由 transformer 定义的回调输入输出，自行组件在实现时需要满足结构的含义
+type TransformerCallbackInput struct {
+    Input []*schema.Document
+    Extra map[string]any
+}
+
+type TransformerCallbackOutput struct {
+    Output []*schema.Document
+    Extra map[string]any
+}
+完整实现示例
+type MyTransformer struct {
+    chunkSize int
+    overlap int
+    minChunkLength int
+}
+
+func NewMyTransformer(config *MyTransformerConfig) (*MyTransformer, error) {
+    return &MyTransformer{
+        chunkSize: config.DefaultChunkSize,
+        overlap: config.DefaultOverlap,
+        minChunkLength: config.DefaultMinChunkLength,
+    }, nil
+}
+
+func (t *MyTransformer) Transform(ctx context.Context, src []*schema.Document, opts ...document.TransformerOption) ([]*schema.Document, error) {
+    // 1. 处理 Option
+    options := &MyTransformerOptions{
+        ChunkSize: t.chunkSize,
+        Overlap: t.overlap,
+        MinChunkLength: t.minChunkLength,
+    }
+    options = document.GetTransformerImplSpecificOptions(options, opts...)
+    
+    // 2. 开始转换前的回调
+    ctx = callbacks.OnStart(ctx, info, &document.TransformerCallbackInput{
+        Input: src,
+    })
+    
+    // 3. 执行转换逻辑
+    docs, err := t.doTransform(ctx, src, options)
+    
+    // 4. 处理错误和完成回调
+    if err != nil {
+        ctx = callbacks.OnError(ctx, info, err)
+        return nil, err
+    }
+    
+    ctx = callbacks.OnEnd(ctx, info, &document.TransformerCallbackOutput{
+        Output: docs,
+    })
+    
+    return docs, nil
+}
+
+func (t *MyTransformer) doTransform(ctx context.Context, src []*schema.Document, opts *MyTransformerOptions) ([]*schema.Document, error) {
+    // 实现文档转换逻辑
+    return docs, nil
+}
+注意事项
+转换后的文档需要注意对 metadata 的处理，注意保留原 metadata，以及新增自定义的 metadata
+
+
+
+Eino: Embedding 使用说明
+基本介绍
+Embedding 组件是一个用于将文本转换为向量表示的组件。它的主要作用是将文本内容映射到向量空间，使得语义相似的文本在向量空间中的距离较近。这个组件在以下场景中发挥重要作用：
+
+文本相似度计算
+语义搜索
+文本聚类分析
+组件定义
+接口定义
+type Embedder interface {
+    EmbedStrings(ctx context.Context, texts []string, opts ...Option) ([][]float64, error)
+}
+EmbedStrings 方法
+功能：将一组文本转换为向量表示
+参数：
+ctx：上下文对象，用于传递请求级别的信息，同时也用于传递 Callback Manager
+texts：待转换的文本列表
+opts：转换选项，用于配置转换行为
+返回值：
+[][]float64：文本对应的向量表示列表，每个向量的维度由具体的实现决定
+error：转换过程中的错误信息
+公共 Option
+Embedding 组件使用 EmbeddingOption 来定义可选参数，下方是抽象出的公共 option。每个具体的实现可以定义自己的特定 Option，通过 WrapEmbeddingImplSpecificOptFn 函数包装成统一的 EmbeddingOption 类型。
+
+type Options struct {
+    // Model 是用于生成向量的模型名称
+    Model *string
+}
+可以通过以下方式设置选项：
+
+// 设置模型名称
+WithModel(model string) Option
+使用方式
+单独使用
+代码位置：eino-ext/components/embedding/openai/examples/embedding
+
+import "github.com/cloudwego/eino-ext/components/embedding/openai"
+
+embedder, _ := openai.NewEmbedder(ctx, &openai.EmbeddingConfig{
+    APIKey:     accessKey,
+    Model:      "text-embedding-3-large",
+    Dimensions: &defaultDim,
+    Timeout:    0,
+})
+
+vectorIDs, _ := embedder.EmbedStrings(ctx, []string{"hello", "how are you"})
+在编排中使用
+代码位置：eino-ext/components/embedding/openai/examples/embedding
+
+// 在 Chain 中使用
+chain := compose.NewChain[[]string, [][]float64]()
+chain.AppendEmbedding(embedder)
+
+// 在 Graph 中使用
+graph := compose.NewGraph[[]string, [][]float64]()
+graph.AddEmbeddingNode("embedding_node", embedder)
+Option 和 Callback 使用
+Option 使用示例
+// 使用选项 (以独立使用组件为例)
+vectors, err := embedder.EmbedStrings(ctx, texts,
+    embedding.WithModel("text-embedding-3-small"),
+)
+Callback 使用示例
+代码位置：eino-ext/components/embedding/openai/examples/embedding
+
+import (
+    "github.com/cloudwego/eino/callbacks"
+    "github.com/cloudwego/eino/components/embedding"
+    "github.com/cloudwego/eino/compose"
+    callbacksHelper "github.com/cloudwego/eino/utils/callbacks"
+    "github.com/cloudwego/eino-ext/components/embedding/openai"
+)
+
+handler := &callbacksHelper.EmbeddingCallbackHandler{
+    OnStart: func(ctx context.Context, runInfo *callbacks.RunInfo, input *embedding.CallbackInput) context.Context {
+       log.Printf("input access, len: %v, content: %s\n", len(input.Texts), input.Texts)
+       return ctx
+    },
+    OnEnd: func(ctx context.Context, runInfo *callbacks.RunInfo, output *embedding.CallbackOutput) context.Context {
+       log.Printf("output finished, len: %v\n", len(output.Embeddings))
+       return ctx
+    },
+}
+
+callbackHandler := callbacksHelper.NewHandlerHelper().Embedding(handler).Handler()
+
+chain := compose.NewChain[[]string, [][]float64]()
+chain.AppendEmbedding(embedder)
+
+// 编译并运行
+runnable, _ := chain.Compile(ctx)
+vectors, _ = runnable.Invoke(ctx, []string{"hello", "how are you"},
+    compose.WithCallbacks(callbackHandler))
+
+log.Printf("vectors in chain: %v", vectors)
+已有实现
+OpenAI Embedding: 使用 OpenAI 的文本嵌入模型生成向量 Embedding - OpenAI
+ARK Embedding: 使用 ARK 平台的模型生成向量 Embedding - ARK
+自行实现参考
+实现自定义的 Embedding 组件时，需要注意以下几点：
+
+注意处理公共 option
+注意实现 callback 机制
+Option 机制
+自定义 Embedding 需要实现自己的 Option 机制：
+
+// 定义 Option 结构体
+type MyEmbeddingOptions struct {
+    BatchSize int
+    MaxRetries int
+    Timeout time.Duration
+}
+
+// 定义 Option 函数
+func WithBatchSize(size int) embedding.Option {
+    return embedding.WrapEmbeddingImplSpecificOptFn(func(o *MyEmbeddingOptions) {
+        o.BatchSize = size
+    })
+}
+Callback 处理
+Embedder 实现需要在适当的时机触发回调。框架已经定义了标准的回调输入输出结构体：
+
+// CallbackInput 是 embedding 回调的输入
+type CallbackInput struct {
+    // Texts 是待转换的文本列表
+    Texts []string
+    // Config 是生成向量的配置信息
+    Config *Config
+    // Extra 是回调的额外信息
+    Extra map[string]any
+}
+
+// CallbackOutput 是 embedding 回调的输出
+type CallbackOutput struct {
+    // Embeddings 是生成的向量列表
+    Embeddings [][]float64
+    // Config 是生成向量的配置信息
+    Config *Config
+    // TokenUsage 是 token 使用情况
+    TokenUsage *TokenUsage
+    // Extra 是回调的额外信息
+    Extra map[string]any
+}
+
+// TokenUsage 是 token 使用情况
+type TokenUsage struct {
+    // PromptTokens 是提示词的 token 数量
+    PromptTokens int
+    // CompletionTokens 是补全的 token 数量
+    CompletionTokens int
+    // TotalTokens 是总的 token 数量
+    TotalTokens int
+}
+完整实现示例
+type MyEmbedder struct {
+    model string
+    batchSize int
+}
+
+func NewMyEmbedder(config *MyEmbedderConfig) (*MyEmbedder, error) {
+    return &MyEmbedder{
+        model: config.DefaultModel,
+        batchSize: config.DefaultBatchSize,
+    }, nil
+}
+
+func (e *MyEmbedder) EmbedStrings(ctx context.Context, texts []string, opts ...embedding.Option) ([][]float64, error) {
+    // 1. 处理选项
+    options := &MyEmbeddingOptions{
+        Options: &embedding.Options{},
+        BatchSize: e.batchSize,
+    }
+    options.Options = embedding.GetCommonOptions(options.Options, opts...)
+    options = embedding.GetImplSpecificOptions(options.Options, opts...)
+    
+    // 2. 获取 callback manager
+    cm := callbacks.ManagerFromContext(ctx)
+    
+    // 3. 开始生成前的回调
+    ctx = cm.OnStart(ctx, info, &embedding.CallbackInput{
+        Texts: texts,
+        Config: &embedding.Config{
+            Model: e.model,
+        },
+    })
+    
+    // 4. 执行向量生成逻辑
+    vectors, tokenUsage, err := e.doEmbed(ctx, texts, options)
+    
+    // 5. 处理错误和完成回调
+    if err != nil {
+        ctx = cm.OnError(ctx, info, err)
+        return nil, err
+    }
+    
+    ctx = cm.OnEnd(ctx, info, &embedding.CallbackOutput{
+        Embeddings: vectors,
+        Config: &embedding.Config{
+            Model: e.model,
+        },
+        TokenUsage: tokenUsage,
+    })
+    
+    return vectors, nil
+}
+
+func (e *MyEmbedder) doEmbed(ctx context.Context, texts []string, opts *MyEmbeddingOptions) ([][]float64, *TokenUsage, error) {
+    // 实现逻辑
+    return vectors, tokenUsage, nil
+}
+
+
+
+
+
+Eino: Indexer 使用说明
+基本介绍
+Indexer 组件是一个用于存储和索引文档的组件。它的主要作用是将文档及其向量表示存储到后端存储系统中，并提供高效的检索能力。这个组件在以下场景中发挥重要作用：
+
+构建向量数据库，以用于语义关联搜索
+组件定义
+接口定义
+代码位置：eino/components/indexer/interface.go
+
+type Indexer interface {
+    Store(ctx context.Context, docs []*schema.Document, opts ...Option) (ids []string, err error)
+}
+Store 方法
+功能：存储文档并建立索引
+参数：
+ctx：上下文对象，用于传递请求级别的信息，同时也用于传递 Callback Manager
+docs：待存储的文档列表
+opts：存储选项，用于配置存储行为
+返回值：
+ids：存储成功的文档 ID 列表
+error：存储过程中的错误信息
+公共 Option
+Indexer 组件使用 IndexerOption 来定义可选参数，Indexer 定义了如下的公共 option。另外，每个具体的实现可以定义自己的特定 Option，通过 WrapIndexerImplSpecificOptFn 函数包装成统一的 IndexerOption 类型。
+
+type Options struct {
+    // SubIndexes 是要建立索引的子索引列表
+    SubIndexes []string   
+    // Embedding 是用于生成文档向量的组件
+    Embedding embedding.Embedder
+}
+可以通过以下方式设置选项：
+
+// 设置子索引
+WithSubIndexes(subIndexes []string) Option
+// 设置向量生成组件
+WithEmbedding(emb embedding.Embedder) Option
+使用方式
+单独使用
+import (
+    "github.com/cloudwego/eino/schema"
+    "github.com/cloudwego/eino-ext/components/indexer/volc_vikingdb"
+)
+
+collectionName := "eino_test"
+
+/*
+ * 下面示例中提前构建了一个名为 eino_test 的数据集 (collection)，字段配置为:
+ * 字段名称       字段类型         向量维度
+ * ID            string
+ * vector         vector       1024
+ * sparse_vector    sparse_vector
+ * content        string
+ * extra_field_1    string
+ *
+ * component 使用时注意:
+ * 1. ID / vector / sparse_vector / content 的字段名称与类型与上方配置一致
+ * 2. vector 向量维度需要与 ModelName 对应的模型所输出的向量维度一致
+ * 3. 部分模型不输出稀疏向量，此时 UseSparse 需要设置为 false，collection 可以不设置 sparse_vector 字段
+ */
+
+cfg := &volc_vikingdb.IndexerConfig{
+    // https://api-vikingdb.volces.com （华北）
+    // https://api-vikingdb.mlp.cn-shanghai.volces.com（华东）
+    // https://api-vikingdb.mlp.ap-mya.byteplus.com（海外-柔佛）
+    Host:              "api-vikingdb.volces.com",
+    Region:            "cn-beijing",
+    AK:                ak,
+    SK:                sk,
+    Scheme:            "https",
+    ConnectionTimeout: 0,
+    Collection:        collectionName,
+    EmbeddingConfig: volc_vikingdb.EmbeddingConfig{
+       UseBuiltin: true,
+       ModelName:  "bge-m3",
+       UseSparse:  true,
+    },
+    AddBatchSize: 10,
+}
+
+volcIndexer, _ := volc_vikingdb.NewIndexer(ctx, cfg)
+
+doc := &schema.Document{
+    ID:      "mock_id_1",
+    Content: "A ReAct prompt consists of few-shot task-solving trajectories, with human-written text reasoning traces and actions, as well as environment observations in response to actions",
+}
+volc_vikingdb.SetExtraDataFields(doc, map[string]interface{}{"extra_field_1": "mock_ext_abc"})
+volc_vikingdb.SetExtraDataTTL(doc, 1000)
+
+docs := []*schema.Document{doc}
+resp, _ := volcIndexer.Store(ctx, docs)
+
+fmt.Printf("vikingDB store success, docs=%v, resp ids=%v\n", docs, resp)
+在编排中使用
+// 在 Chain 中使用
+chain := compose.NewChain[[]*schema.Document, []string]()
+chain.AppendIndexer(indexer)
+
+// 在 Graph 中使用
+graph := compose.NewGraph[[]*schema.Document, []string]()
+graph.AddIndexerNode("indexer_node", indexer)
+Option 和 Callback 使用
+Option 使用示例
+// 使用选项 (单独使用时)
+ids, err := indexer.Store(ctx, docs,
+    // 设置子索引
+    indexer.WithSubIndexes([]string{"kb_1", "kb_2"}),
+    // 设置向量生成组件
+    indexer.WithEmbedding(embedder),
+)
+Callback 使用示例
+代码位置：eino-ext/components/indexer/volc_vikingdb/examples/builtin_embedding
+
+import (
+    "context"
+    "fmt"
+    "log"
+    "os"
+
+    "github.com/cloudwego/eino/callbacks"
+    "github.com/cloudwego/eino/components/indexer"
+    "github.com/cloudwego/eino/compose"
+    "github.com/cloudwego/eino/schema"
+    callbacksHelper "github.com/cloudwego/eino/utils/callbacks"
+
+    "github.com/cloudwego/eino-ext/components/indexer/volc_vikingdb"
+)
+
+handler := &callbacksHelper.IndexerCallbackHandler{
+    OnStart: func(ctx context.Context, info *callbacks.RunInfo, input *indexer.CallbackInput) context.Context {
+       log.Printf("input access, len: %v, content: %s\n", len(input.Docs), input.Docs[0].Content)
+       return ctx
+    },
+    OnEnd: func(ctx context.Context, info *callbacks.RunInfo, output *indexer.CallbackOutput) context.Context {
+       log.Printf("output finished, len: %v, ids=%v\n", len(output.IDs), output.IDs)
+       return ctx
+    },
+    // OnError
+}
+
+// 使用 callback handler
+helper := callbacksHelper.NewHandlerHelper().
+    Indexer(handler).
+    Handler()
+
+chain := compose.NewChain[[]*schema.Document, []string]()
+chain.AppendIndexer(volcIndexer)
+
+// 在运行时使用
+run, _ := chain.Compile(ctx)
+
+outIDs, _ := run.Invoke(ctx, docs, compose.WithCallbacks(helper))
+
+fmt.Printf("vikingDB store success, docs=%v, resp ids=%v\n", docs, outIDs)
+已有实现
+Volc VikingDB Indexer: 基于火山引擎 VikingDB 实现的向量数据库索引器 Indexer - VikingDB
+自行实现参考
+实现自定义的 Indexer 组件时，需要注意以下几点：
+
+注意对公共 option 的处理以及组件实现级的 option 处理
+注意对 callback 的处理
+Option 机制
+自定义 Indexer 可根据需要实现自己的 Option：
+
+// 定义 Option 结构体
+type MyIndexerOptions struct {
+    BatchSize int
+    MaxRetries int
+}
+
+// 定义 Option 函数
+func WithBatchSize(size int) indexer.Option {
+    return indexer.WrapIndexerImplSpecificOptFn(func(o *MyIndexerOptions) {
+        o.BatchSize = size
+    })
+}
+Callback 处理
+Indexer 实现需要在适当的时机触发回调。框架已经定义了标准的回调输入输出结构体：
+
+// CallbackInput 是 indexer 回调的输入
+type CallbackInput struct {
+    // Docs 是待索引的文档列表
+    Docs []*schema.Document
+    // Extra 是回调的额外信息
+    Extra map[string]any
+}
+
+// CallbackOutput 是 indexer 回调的输出
+type CallbackOutput struct {
+    // IDs 是索引器返回的文档 ID 列表
+    IDs []string
+    // Extra 是回调的额外信息
+    Extra map[string]any
+}
+完整实现示例
+type MyIndexer struct {
+    batchSize int
+    embedder embedding.Embedder
+}
+
+func NewMyIndexer(config *MyIndexerConfig) (*MyIndexer, error) {
+    return &MyIndexer{
+        batchSize: config.DefaultBatchSize,
+        embedder: config.DefaultEmbedder,
+    }, nil
+}
+
+func (i *MyIndexer) Store(ctx context.Context, docs []*schema.Document, opts ...indexer.Option) ([]string, error) {
+    // 1. 处理选项
+    options := &indexer.Options{},
+    options = indexer.GetCommonOptions(options, opts...)
+    
+    // 2. 获取 callback manager
+    cm := callbacks.ManagerFromContext(ctx)
+    
+    // 3. 开始存储前的回调
+    ctx = cm.OnStart(ctx, info, &indexer.CallbackInput{
+        Docs: docs,
+    })
+    
+    // 4. 执行存储逻辑
+    ids, err := i.doStore(ctx, docs, options)
+    
+    // 5. 处理错误和完成回调
+    if err != nil {
+        ctx = cm.OnError(ctx, info, err)
+        return nil, err
+    }
+    
+    ctx = cm.OnEnd(ctx, info, &indexer.CallbackOutput{
+        IDs: ids,
+    })
+    
+    return ids, nil
+}
+
+func (i *MyIndexer) doStore(ctx context.Context, docs []*schema.Document, opts *indexer.Options) ([]string, error) {
+    // 实现文档存储逻辑 (注意处理公共option的参数)
+    // 1. 如果设置了 Embedding 组件，生成文档的向量表示
+    if opts.Embedding != nil {
+        // 提取文档内容
+        texts := make([]string, len(docs))
+        for j, doc := range docs {
+            texts[j] = doc.Content
+        }
+        // 生成向量
+        vectors, err := opts.Embedding.EmbedStrings(ctx, texts)
+        if err != nil {
+            return nil, err
+        }
+        // 将向量存储到文档的 MetaData 中
+        for j, doc := range docs {
+            doc.WithVector(vectors[j])
+        }
+    }
+    
+    // 2. 其他自定义逻辑
+    return ids, nil
+}
+
+
+
+
+
+Eino: Retriever 使用说明
+基本介绍
+Retriever 组件是一个用于从各种数据源检索文档的组件。它的主要作用是根据用户的查询（query）从文档库中检索出最相关的文档。这个组件在以下场景中特别有用：
+
+基于向量相似度的文档检索
+基于关键词的文档搜索
+知识库问答系统 (rag)
+组件定义
+接口定义
+代码位置：eino/components/retriever/interface.go
+
+type Retriever interface {
+    Retrieve(ctx context.Context, query string, opts ...Option) ([]*schema.Document, error)
+}
+Retrieve 方法
+功能：根据查询检索相关文档
+参数：
+ctx：上下文对象，用于传递请求级别的信息，同时也用于传递 Callback Manager
+query：查询字符串
+opts：检索选项，用于配置检索行为
+返回值：
+[]*schema.Document：检索到的文档列表
+error：检索过程中的错误信息
+Document 结构体
+type Document struct {
+    // ID 是文档的唯一标识符
+    ID string
+    // Content 是文档的内容
+    Content string
+    // MetaData 用于存储文档的元数据信息
+    MetaData map[string]any
+}
+公共 Option
+Retriever 组件使用 RetrieverOption 来定义可选参数， 以下是 Retriever 组件需要实现的公共 option。另外，每个具体的实现可以定义自己的特定 Option，通过 WrapRetrieverImplSpecificOptFn 函数包装成统一的 RetrieverOption 类型。
+
+type Options struct {
+    // Index 是检索器使用的索引，不同检索器中的索引可能有不同含义
+    Index *string
+    
+    // SubIndex 是检索器使用的子索引，不同检索器中的子索引可能有不同含义
+    SubIndex *string
+    
+    // TopK 是检索的文档数量上限
+    TopK *int
+    
+    // ScoreThreshold 是文档相似度的阈值，例如 0.5 表示文档的相似度分数必须大于 0.5
+    ScoreThreshold *float64
+    
+    // Embedding 是用于生成查询向量的组件
+    Embedding embedding.Embedder
+    
+    // DSLInfo 是用于检索的 DSL 信息，仅在 viking 类型的检索器中使用
+    DSLInfo map[string]interface{}
+}
+可以通过以下方式设置选项：
+
+// 设置索引
+WithIndex(index string) Option
+
+// 设置子索引
+WithSubIndex(subIndex string) Option
+
+// 设置检索文档数量上限
+WithTopK(topK int) Option
+
+// 设置相似度阈值
+WithScoreThreshold(threshold float64) Option
+
+// 设置向量生成组件
+WithEmbedding(emb embedding.Embedder) Option
+
+// 设置 DSL 信息（仅用于 viking 类型检索器）
+WithDSLInfo(dsl map[string]any) Option
+使用方式
+单独使用
+代码位置：eino-ext/components/retriever/volc_vikingdb/examples/builtin_embedding
+
+import (
+    "github.com/cloudwego/eino/components/retriever"
+    "github.com/cloudwego/eino/compose"
+    "github.com/cloudwego/eino/schema"
+
+    "github.com/cloudwego/eino-ext/components/retriever/volc_vikingdb"
+)
+
+collectionName := "eino_test"
+indexName := "test_index_1"
+
+/*
+ * 下面示例中提前构建了一个名为 eino_test 的数据集 (collection)，并在此数据集上构建了一个名为 test_index_1 的 hnsw-hybrid 索引 (index)
+ * 数据集字段配置为:
+ * 字段名称       字段类型         向量维度
+ * ID            string
+ * vector         vector       1024
+ * sparse_vector    sparse_vector
+ * content        string
+ * extra_field_1    string
+ *
+ * component 使用时注意:
+ * 1. ID / vector / sparse_vector / content 的字段名称与类型与上方配置一致
+ * 2. vector 向量维度需要与 ModelName 对应的模型所输出的向量维度一致
+ * 3. 部分模型不输出稀疏向量，此时 UseSparse 需要设置为 false，collection 可以不设置 sparse_vector 字段
+ */
+
+cfg := &volc_vikingdb.RetrieverConfig{
+    // https://api-vikingdb.volces.com （华北）
+    // https://api-vikingdb.mlp.cn-shanghai.volces.com（华东）
+    // https://api-vikingdb.mlp.ap-mya.byteplus.com（海外-柔佛）
+    Host:              "api-vikingdb.volces.com",
+    Region:            "cn-beijing",
+    AK:                ak,
+    SK:                sk,
+    Scheme:            "https",
+    ConnectionTimeout: 0,
+    Collection:        collectionName,
+    Index:             indexName,
+    EmbeddingConfig: volc_vikingdb.EmbeddingConfig{
+       UseBuiltin:  true,
+       ModelName:   "bge-m3",
+       UseSparse:   true,
+       DenseWeight: 0.4,
+    },
+    Partition:      "", // 对应索引中的【子索引划分字段】, 未设置时至空即可
+    TopK:           of(10),
+    ScoreThreshold: of(0.1),
+    FilterDSL:      nil, // 对应索引中的【标量过滤字段】，未设置时至空即可，表达式详见 https://www.volcengine.com/docs/84313/1254609
+}
+
+volcRetriever, _ := volc_vikingdb.NewRetriever(ctx, cfg)
+
+
+query := "tourist attraction"
+docs, _ := volcRetriever.Retrieve(ctx, query)
+
+log.Printf("vikingDB retrieve success, query=%v, docs=%v", query, docs)
+在编排中使用
+// 在 Chain 中使用
+chain := compose.NewChain[string, []*schema.Document]()
+chain.AppendRetriever(retriever)
+
+// 在 Graph 中使用
+graph := compose.NewGraph[string, []*schema.Document]()
+graph.AddRetrieverNode("retriever_node", retriever)
+Option 和 Callback 使用
+Callback 使用示例
+代码位置：eino-ext/components/retriever/volc_vikingdb/examples/builtin_embedding
+
+import (
+    "github.com/cloudwego/eino/callbacks"
+    "github.com/cloudwego/eino/components/retriever"
+    "github.com/cloudwego/eino/compose"
+    "github.com/cloudwego/eino/schema"
+    callbacksHelper "github.com/cloudwego/eino/utils/callbacks"
+    "github.com/cloudwego/eino-ext/components/retriever/volc_vikingdb"
+)
+
+// 创建 callback handler
+handler := &callbacksHelper.RetrieverCallbackHandler{
+    OnStart: func(ctx context.Context, info *callbacks.RunInfo, input *retriever.CallbackInput) context.Context {
+       log.Printf("input access, content: %s\n", input.Query)
+       return ctx
+    },
+    OnEnd: func(ctx context.Context, info *callbacks.RunInfo, output *retriever.CallbackOutput) context.Context {
+       log.Printf("output finished, len: %v\n", len(output.Docs))
+       return ctx
+    },
+    // OnError
+}
+
+// 使用 callback handler
+helper := callbacksHelper.NewHandlerHelper().
+    Retriever(handler).
+    Handler()
+
+chain := compose.NewChain[string, []*schema.Document]()
+chain.AppendRetriever(volcRetriever)
+
+// 在运行时使用
+run, _ := chain.Compile(ctx)
+
+outDocs, _ := run.Invoke(ctx, query, compose.WithCallbacks(helper))
+
+log.Printf("vikingDB retrieve success, query=%v, docs=%v", query, outDocs)
+已有实现
+Volc VikingDB Retriever: 基于火山引擎 VikingDB 的检索实现 Retriever - VikingDB
+自行实现参考
+实现自定义的 Retriever 组件时，需要注意以下几点：
+
+注意 option 机制的处理，及处理公共的 option.
+注意处理 callback
+注意需要注入特定的 metadata，以便后续节点使用
+option 机制
+Retriever 组件提供了一组公共选项，实现时需要正确处理这些选项：
+
+// 使用 GetCommonOptions 处理公共 option
+func (r *MyRetriever) Retrieve(ctx context.Context, query string, opts ...retriever.Option) ([]*schema.Document, error) {
+    // 1. 初始化及读取 option
+    options := &retriever.Options{ // 可设置default值
+        Index: &r.index,
+        TopK: &r.topK,
+        Embedding: r.embedder,
+    }
+    options = retriever.GetCommonOptions(options, opts...)
+    
+    // ...
+}
+Callback 处理
+Retriever 实现需要在适当的时机触发回调，以下结构体是 retriever 组件定义好的结构：
+
+// 定义回调输入输出
+type CallbackInput struct {
+    Query string
+    TopK int
+    Filter string
+    ScoreThreshold *float64
+    Extra map[string]any
+}
+
+type CallbackOutput struct {
+    Docs []*schema.Document
+    Extra map[string]any
+}
+完整实现示例
+type MyRetriever struct {
+    embedder embedding.Embedder
+    index string
+    topK int
+}
+
+func NewMyRetriever(config *MyRetrieverConfig) (*MyRetriever, error) {
+    return &MyRetriever{
+        embedder: config.Embedder,
+        index: config.Index,
+        topK: config.DefaultTopK,
+    }, nil
+}
+
+func (r *MyRetriever) Retrieve(ctx context.Context, query string, opts ...retriever.Option) ([]*schema.Document, error) {
+    // 1. 处理选项
+    options := &retriever.Options{
+        Index: &r.index,
+        TopK: &r.topK,
+        Embedding: r.embedder,
+    }
+    options = retriever.GetCommonOptions(options, opts...)
+    
+    // 2. 获取 callback manager
+    cm := callbacks.ManagerFromContext(ctx)
+    
+    // 3. 开始检索前的回调
+    ctx = cm.OnStart(ctx, info, &retriever.CallbackInput{
+        Query: query,
+        TopK: *options.TopK,
+    })
+    
+    // 4. 执行检索逻辑
+    docs, err := r.doRetrieve(ctx, query, options)
+    
+    // 5. 处理错误和完成回调
+    if err != nil {
+        ctx = cm.OnError(ctx, info, err)
+        return nil, err
+    }
+    
+    ctx = cm.OnEnd(ctx, info, &retriever.CallbackOutput{
+        Docs: docs,
+    })
+    
+    return docs, nil
+}
+
+func (r *MyRetriever) doRetrieve(ctx context.Context, query string, opts *retriever.Options) ([]*schema.Document, error) {
+    // 1. 如果设置了 Embedding，生成查询的向量表示 (注意公共option的逻辑处理)
+    var queryVector []float64
+    if opts.Embedding != nil {
+        vectors, err := opts.Embedding.EmbedStrings(ctx, []string{query})
+        if err != nil {
+            return nil, err
+        }
+        queryVector = vectors[0]
+    }
+    
+    // 2. 其他逻辑
+    return docs, nil
+}
+
+
+
+
+
+Eino: ToolsNode&Tool 使用说明
+基本介绍
+ToolsNode 组件是一个用于扩展模型能力的组件，它允许模型调用外部工具来完成特定的任务。这个组件可用于以下场景中：
+
+让模型能够获取实时信息（如搜索引擎、天气查询等）
+使模型能够执行特定的操作（如数据库操作、API 调用等）
+扩展模型的能力范围（如数学计算、代码执行等）
+与外部系统集成（如知识库查询、插件系统等）
+组件定义
+接口定义
+Tool 组件提供了三个层次的接口：
+
+代码位置：eino/compose/tool/interface.go
+
+// 基础工具接口，提供工具信息
+type BaseTool interface {
+    Info(ctx context.Context) (*schema.ToolInfo, error)
+}
+
+// 可调用的工具接口，支持同步调用
+type InvokableTool interface {
+    BaseTool
+    InvokableRun(ctx context.Context, argumentsInJSON string, opts ...Option) (string, error)
+}
+
+// 支持流式输出的工具接口
+type StreamableTool interface {
+    BaseTool
+    StreamableRun(ctx context.Context, argumentsInJSON string, opts ...Option) (*schema.StreamReader[string], error)
+}
+Info 方法
+功能：获取工具的描述信息
+参数：
+ctx：上下文对象
+返回值：
+*schema.ToolInfo：工具的描述信息
+error：获取信息过程中的错误
+InvokableRun 方法
+功能：同步执行工具
+参数：
+ctx：上下文对象，用于传递请求级别的信息，同时也用于传递 Callback Manager
+argumentsInJSON：JSON 格式的参数字符串
+opts：工具执行的选项
+返回值：
+string：执行结果
+error：执行过程中的错误
+StreamableRun 方法
+功能：以流式方式执行工具
+参数：
+ctx：上下文对象，用于传递请求级别的信息，同时也用于传递 Callback Manager
+argumentsInJSON：JSON 格式的参数字符串
+opts：工具执行的选项
+返回值：
+*schema.StreamReader[string]：流式执行结果
+error：执行过程中的错误
+ToolInfo 结构体
+代码位置：eino/schema/tool.go
+
+type ToolInfo struct {
+    // 工具的唯一名称，用于清晰地表达其用途
+    Name string
+    // 用于告诉模型如何/何时/为什么使用这个工具
+    // 可以在描述中包含少量示例
+    Desc string
+    // 工具接受的参数定义
+    // 可以通过两种方式描述：
+    // 1. 使用 ParameterInfo：schema.NewParamsOneOfByParams(params)
+    // 2. 使用 OpenAPIV3：schema.NewParamsOneOfByOpenAPIV3(openAPIV3)
+    *ParamsOneOf
+}
+公共 Option
+Tool 组件使用 ToolOption 来定义可选参数， ToolsNode 没有抽象公共的 option。每个具体的实现可以定义自己的特定 Option，通过 WrapToolImplSpecificOptFn 函数包装成统一的 ToolOption 类型。
+
+使用方式
+import (
+    "github.com/cloudwego/eino/components/tool"
+    "github.com/cloudwego/eino/compose"
+    "github.com/cloudwego/eino/schema"
+)
+
+// 创建工具节点
+toolsNode := compose.NewToolsNode([]tool.Tool{
+    searchTool,    // 搜索工具
+    weatherTool,   // 天气查询工具
+    calculatorTool, // 计算器工具
+})
+
+// Mock LLM 输出作为输入
+input := &schema.Message{
+    Role: schema.Assistant,
+    ToolCalls: []schema.ToolCall{
+       {
+          Function: schema.FunctionCall{
+             Name:      "weather",
+             Arguments: `{"city": "深圳", "date": "tomorrow"}`,
+          },
+       },
+    },
+}
+
+toolMessages, err := toolsNode.Invoke(ctx, input)
+ToolsNode 通常不会被单独使用，一般用于编排之中接在 ChatModel 之后。
+
+在编排中使用
+import (
+    "github.com/cloudwego/eino/components/tool"
+    "github.com/cloudwego/eino/compose"
+    "github.com/cloudwego/eino/schema"
+)
+
+// 创建工具节点
+toolsNode := compose.NewToolsNode([]tool.Tool{
+    searchTool,    // 搜索工具
+    weatherTool,   // 天气查询工具
+    calculatorTool, // 计算器工具
+})
+
+// 在 Chain 中使用
+chain := compose.NewChain[*schema.Message, []*schema.Message]()
+chain.AppendToolsNode(toolsNode)
+
+// graph 中
+graph := compose.NewGraph[*schema.Message, []*schema.Message]()
+graph.AddToolsNode(toolsNode)
+Option 机制
+自定义 Tool 可根据自己需要实现特定的 Option：
+
+import "github.com/cloudwego/eino/components/tool"
+
+// 定义 Option 结构体
+type MyToolOptions struct {
+    Timeout time.Duration
+    MaxRetries int
+    RetryInterval time.Duration
+}
+
+// 定义 Option 函数
+func WithTimeout(timeout time.Duration) tool.Option {
+    return tool.WrapImplSpecificOptFn(func(o *MyToolOptions) {
+        o.Timeout = timeout
+    })
+}
+Option 和 Callback 使用
+Callback 使用示例
+import (
+    "context"
+
+    callbackHelper "github.com/cloudwego/eino/utils/callbacks"
+    "github.com/cloudwego/eino/callbacks"
+    "github.com/cloudwego/eino/compose"
+    "github.com/cloudwego/eino/components/tool"
+)
+
+// 创建 callback handler
+handler := &callbackHelper.ToolCallbackHandler{
+    OnStart: func(ctx context.Context, info *callbacks.RunInfo, input *tool.CallbackInput) context.Context {
+       fmt.Printf("开始执行工具，参数: %s\n", input.ArgumentsInJSON)
+       return ctx
+    },
+    OnEnd: func(ctx context.Context, info *callbacks.RunInfo, output *tool.CallbackOutput) context.Context {
+       fmt.Printf("工具执行完成，结果: %s\n", output.Response)
+       return ctx
+    },
+    OnEndWithStreamOutput: func(ctx context.Context, info *callbacks.RunInfo, output *schema.StreamReader[*tool.CallbackOutput]) context.Context {
+       fmt.Println("工具开始流式输出")
+       go func() {
+          defer output.Close()
+
+          for {
+             chunk, err := output.Recv()
+             if errors.Is(err, io.EOF) {
+                return
+             }
+             if err != nil {
+                return
+             }
+             fmt.Printf("收到流式输出: %s\n", chunk.Response)
+          }
+       }()
+       return ctx
+    },
+}
+
+// 使用 callback handler
+helper := callbackHelper.NewHandlerHelper().
+    Tool(handler).
+    Handler()
+ 
+/*** compose a chain
+* chain := NewChain
+* chain.appendxxx().
+*       appendxxx().
+*       ...
+*/
+
+// 在运行时使用
+runnable, err := chain.Compile()
+if err != nil {
+    return err
+}
+result, err := runnable.Invoke(ctx, input, compose.WithCallbacks(helper))
+
+
+
+
+Eino: Lambda 使用说明
+基本介绍
+Lambda 是 Eino 中最基础的组件类型，它允许用户在工作流中嵌入自定义的函数逻辑。Lambda 组件底层是由输入输出是否流所形成的 4 种运行函数组成，对应 4 种交互模式: Invoke、Stream、Collect、Transform。
+
+用户构建 Lambda 时可实现其中的一种或多种，框架会根据一定的规则进行转换，详细介绍可见: Eino: 概述 (见 Runnable 小节)
+
+组件定义及实现
+Lambda 组件的核心是 Lambda 结构体，它包装了用户提供的 Lambda 函数，用户可通过构建方法创建一个 Lambda 组件：
+
+代码位置：eino/compose/types_lambda.go
+
+type Lambda struct {
+    executor *composableRunnable
+}
+Lambda 支持的四种函数类型定义如下，即用户提供的 Lambda 函数需要满足这些函数签名：
+
+type Invoke[I, O, TOption any] func(ctx context.Context, input I, opts ...TOption) (output O, err error)
+
+type Stream[I, O, TOption any] func(ctx context.Context, input I, opts ...TOption) (output *schema.StreamReader[O], err error)
+
+type Collect[I, O, TOption any] func(ctx context.Context, input *schema.StreamReader[I], opts ...TOption) (output O, err error)
+
+type Transform[I, O, TOption any] func(ctx context.Context, input *schema.StreamReader[I], opts ...TOption) (output *schema.StreamReader[O], err error)
+使用方式
+示例中的代码参考： https://github.com/cloudwego/eino-examples/blob/main/components/lambda
+
+构建方法
+从 Eino 的组件接口的统一规范来看，一个组件的可调用方法需要有 3 个入参 和 2 个出参： func (ctx, input, …option) (output, error), 但在使用 Lambda 的场景中，常希望通过提供一个简单的函数实现来添加一个 Lambda 节点，因此构建方法分成 3 种：
+
+仅提供一种已选定输入输出是否为流的交互函数
+不带自定义 Option
+使用自定义 Option
+从 4 中交互函数中自定义 n(n<=4) 种的函数： AnyLambda
+不带自定义 Option
+InvokableLambda
+// input 和 output 类型为自定义的任何类型
+lambda := compose.InvokableLambda(func(ctx context.Context, input string) (output string, err error) {
+    // some logic
+})
+StreamableLambda
+// input 可以是任意类型，output 必须是 *schema.StreamReader[O]，其中 O 可以是任意类型
+lambda := compose.StreamableLambda(func(ctx context.Context, input string) (output *schema.StreamReader[string], err error) {
+    // some logic
+})
+CollectableLambda
+// input 必须是 *schema.StreamReader[I]，其中 I 可以是任意类型，output 可以是任意类型
+lambda := compose.CollectableLambda(func(ctx context.Context, input *schema.StreamReader[string]) (output string, err error) {
+    // some logic
+})
+TransformableLambda
+// input 和 output 必须是 *schema.StreamReader[I]，其中 I 可以是任意类型
+lambda := compose.TransformableLambda(func(ctx context.Context, input *schema.StreamReader[string]) (output *schema.StreamReader[string], err error) {
+    // some logic
+})
+使用自定义 Option
+每一种交互方式都对应了一个构建方法，以下以 Invoke 为例：
+
+type Options struct {
+    Field1 string
+}
+type MyOption func(*Options)
+
+lambda := compose.InvokableLambdaWithOption(
+    func(ctx context.Context, input string, opts ...MyOption) (output string, err error) {
+        // 处理 opts
+        // some logic
+    }
+)
+AnyLambda
+AnyLambda 允许同时实现多种交互模式的 Lambda 函数类型：
+
+type Options struct {
+    Field1 string
+}
+
+type MyOption func(*Options)
+
+// input 和 output 类型为自定义的任何类型
+lambda, err := compose.AnyLambda(
+    // Invoke 函数
+    func(ctx context.Context, input string, opts ...MyOption) (output string, err error) {
+        // some logic
+    },
+    // Stream 函数
+    func(ctx context.Context, input string, opts ...MyOption) (output *schema.StreamReader[string], err error) {
+        // some logic
+    },
+    // Collect 函数
+    func(ctx context.Context, input *schema.StreamReader[string], opts ...MyOption) (output string, err error) {
+        // some logic
+    },
+    // Transform 函数
+    func(ctx context.Context, input *schema.StreamReader[string], opts ...MyOption) (output *schema.StreamReader[string], err error) {
+        // some logic
+    },
+)
+编排中使用
+Graph 中使用
+在 Graph 中可以通过 AddLambdaNode 添加 Lambda 节点：
+
+graph := compose.NewGraph[string, *MyStruct]()
+graph.AddLambdaNode(
+    "node1",
+    compose.InvokableLambda(func(ctx context.Context, input string) (*MyStruct, error) {
+        // some logic
+    }),
+)
+Chain 中使用
+在 Chain 中可以通过 AppendLambda 添加 Lambda 节点：
+
+chain := compose.NewChain[string, string]()
+chain.AppendLambda(compose.InvokableLambda(func(ctx context.Context, input string) (string, error) {
+    // some logic
+}))
+两个内置的 Lambda
+ToList
+ToList 是一个内置的 Lambda，用于将单个输入元素转换为包含该元素的切片（数组）：
+
+// 创建一个 ToList Lambda
+lambda := compose.ToList[*schema.Message]()
+
+// 在 Chain 中使用
+chain := compose.NewChain[[]*schema.Message, []*schema.Message]()
+chain.AppendChatModel(chatModel)  // chatModel 返回 *schema.Message
+chain.AppendLambda(lambda)        // 将 *schema.Message 转换为 []*schema.Message
+MessageParser
+MessageParser 是一个内置的 Lambda，用于将 JSON 消息（通常由 LLM 生成）解析为指定的结构体：
+
+// 定义解析目标结构体
+type MyStruct struct {
+    ID int `json:"id"`
+}
+
+// 创建解析器
+parser := schema.NewMessageJSONParser[*MyStruct](&schema.MessageJSONParseConfig{
+    ParseFrom: schema.MessageParseFromContent,
+    ParseKeyPath: "", // 如果仅需要 parse 子字段，可用 "key.sub.grandsub"
+})
+
+// 创建解析 Lambda
+parserLambda := compose.MessageParser(parser)
+
+// 在 Chain 中使用
+chain := compose.NewChain[*schema.Message, *MyStruct]()
+chain.AppendLambda(parserLambda)
+
+// 使用示例
+runner, err := chain.Compile(context.Background())
+parsed, err := runner.Invoke(context.Background(), &schema.Message{
+    Content: `{"id": 1}`,
+})
+// parsed.ID == 1
+MessageParser 支持从消息内容（Content）或工具调用结果（ToolCall）中解析数据，这在意图识别等场景中常用：
+
+// 从工具调用结果解析
+parser := schema.NewMessageJSONParser[*MyStruct](&schema.MessageJSONParseConfig{
+    ParseFrom: schema.MessageParseFromToolCall,
+})
+
+
+
+
+Eino: Chain/Graph 编排介绍
+本文所有代码样例都在：https://github.com/cloudwego/eino-examples/tree/main/compose
+
+Graph 编排
+Graph
+package main
+
+import (
+    "context"
+    "fmt"
+    "io"
+
+    "github.com/cloudwego/eino/components/model"
+    "github.com/cloudwego/eino/components/prompt"
+    "github.com/cloudwego/eino/compose"
+    "github.com/cloudwego/eino/schema"
+)
+
+const (
+    nodeOfModel  = "model"
+    nodeOfPrompt = "prompt"
+)
+
+func main() {
+    ctx := context.Background()
+    g := compose.NewGraph[map[string]any, *schema.Message]()
+
+    pt := prompt.FromMessages(
+       schema.FString,
+       schema.UserMessage("what's the weather in {location}?"),
+    )
+
+    _ = g.AddChatTemplateNode(nodeOfPrompt, pt)
+    _ = g.AddChatModelNode(nodeOfModel, &mockChatModel{}, compose.WithNodeName("ChatModel"))
+    _ = g.AddEdge(compose.START, nodeOfPrompt)
+    _ = g.AddEdge(nodeOfPrompt, nodeOfModel)
+    _ = g.AddEdge(nodeOfModel, compose.END)
+
+    r, err := g.Compile(ctx, compose.WithMaxRunSteps(10))
+    if err != nil {
+       panic(err)
+    }
+
+    in := map[string]any{"location": "beijing"}
+    ret, err := r.Invoke(ctx, in)
+    fmt.Println("invoke result: ", ret)
+
+    // stream
+    s, err := r.Stream(ctx, in)
+    if err != nil {
+       panic(err)
+    }
+
+    defer s.Close()
+    for {
+       chunk, err := s.Recv()
+       if err != nil {
+          if err == io.EOF {
+             break
+          }
+          panic(err)
+       }
+
+       fmt.Println("stream chunk: ", chunk)
+    }
+}
+
+type mockChatModel struct{}
+
+func (m *mockChatModel) Generate(ctx context.Context, input []*schema.Message, opts ...model.Option) (*schema.Message, error) {
+    return schema.AssistantMessage("the weather is good", nil), nil
+}
+
+func (m *mockChatModel) Stream(ctx context.Context, input []*schema.Message, opts ...model.Option) (*schema.StreamReader[*schema.Message], error) {
+    sr, sw := schema.Pipe[*schema.Message](0)
+    go func() {
+       defer sw.Close()
+       sw.Send(schema.AssistantMessage("the weather is", nil), nil)
+       sw.Send(schema.AssistantMessage("good", nil), nil)
+    }()
+    return sr, nil
+}
+
+func (m *mockChatModel) BindTools(tools []*schema.ToolInfo) error {
+    panic("implement me")
+}
+ToolCallAgent
+go get github.com/cloudwego/eino-ext/components/model/openai@latest
+go get github.com/cloudwego/eino@latest
+package main
+
+import (
+    "context"
+    "os"
+
+    "github.com/cloudwego/eino-ext/components/model/openai"
+    "github.com/cloudwego/eino/callbacks"
+    "github.com/cloudwego/eino/components/prompt"
+    "github.com/cloudwego/eino/components/tool"
+    "github.com/cloudwego/eino/components/tool/utils"
+    "github.com/cloudwego/eino/compose"
+    "github.com/cloudwego/eino/schema"
+
+    "github.com/cloudwego/eino-examples/internal/gptr"
+    "github.com/cloudwego/eino-examples/internal/logs"
+)
+
+func main() {
+
+    openAIBaseURL := os.Getenv("OPENAI_BASE_URL")
+    openAIAPIKey := os.Getenv("OPENAI_API_KEY")
+    modelName := os.Getenv("MODEL_NAME")
+
+    ctx := context.Background()
+
+    callbacks.AppendGlobalHandlers(&loggerCallbacks{})
+
+    // 1. create an instance of ChatTemplate as 1st Graph Node
+    systemTpl := `你是一名房产经纪人，结合用户的薪酬和工作，使用 user_info API，为其提供相关的房产信息。邮箱是必须的`
+    chatTpl := prompt.FromMessages(schema.FString,
+       schema.SystemMessage(systemTpl),
+       schema.MessagesPlaceholder("message_histories", true),
+       schema.UserMessage("{user_query}"),
+    )
+
+    modelConf := &openai.ChatModelConfig{
+       BaseURL:     openAIBaseURL,
+       APIKey:      openAIAPIKey,
+       ByAzure:     true,
+       Model:       modelName,
+       Temperature: gptr.Of(float32(0.7)),
+       APIVersion:  "2024-06-01",
+    }
+
+    // 2. create an instance of ChatModel as 2nd Graph Node
+    chatModel, err := openai.NewChatModel(ctx, modelConf)
+    if err != nil {
+       logs.Errorf("NewChatModel failed, err=%v", err)
+       return
+    }
+
+    // 3. create an instance of tool.InvokableTool for Intent recognition and execution
+    userInfoTool := utils.NewTool(
+       &schema.ToolInfo{
+          Name: "user_info",
+          Desc: "根据用户的姓名和邮箱，查询用户的公司、职位、薪酬信息",
+          ParamsOneOf: schema.NewParamsOneOfByParams(map[string]*schema.ParameterInfo{
+             "name": {
+                Type: "string",
+                Desc: "用户的姓名",
+             },
+             "email": {
+                Type: "string",
+                Desc: "用户的邮箱",
+             },
+          }),
+       },
+       func(ctx context.Context, input *userInfoRequest) (output *userInfoResponse, err error) {
+          return &userInfoResponse{
+             Name:     input.Name,
+             Email:    input.Email,
+             Company:  "Bytedance",
+             Position: "CEO",
+             Salary:   "9999",
+          }, nil
+       })
+
+    info, err := userInfoTool.Info(ctx)
+    if err != nil {
+       logs.Errorf("Get ToolInfo failed, err=%v", err)
+       return
+    }
+
+    // 4. bind ToolInfo to ChatModel. ToolInfo will remain in effect until the next BindTools.
+    err = chatModel.BindForcedTools([]*schema.ToolInfo{info})
+    if err != nil {
+       logs.Errorf("BindForcedTools failed, err=%v", err)
+       return
+    }
+
+    // 5. create an instance of ToolsNode as 3rd Graph Node
+    toolsNode, err := compose.NewToolNode(ctx, &compose.ToolsNodeConfig{
+       Tools: []tool.BaseTool{userInfoTool},
+    })
+    if err != nil {
+       logs.Errorf("NewToolNode failed, err=%v", err)
+       return
+    }
+
+    const (
+       nodeKeyOfTemplate  = "template"
+       nodeKeyOfChatModel = "chat_model"
+       nodeKeyOfTools     = "tools"
+    )
+
+    // 6. create an instance of Graph
+    // input type is 1st Graph Node's input type, that is ChatTemplate's input type: map[string]any
+    // output type is last Graph Node's output type, that is ToolsNode's output type: []*schema.Message
+    g := compose.NewGraph[map[string]any, []*schema.Message]()
+
+    // 7. add ChatTemplate into graph
+    _ = g.AddChatTemplateNode(nodeKeyOfTemplate, chatTpl)
+
+    // 8. add ChatModel into graph
+    _ = g.AddChatModelNode(nodeKeyOfChatModel, chatModel)
+
+    // 9. add ToolsNode into graph
+    _ = g.AddToolsNode(nodeKeyOfTools, toolsNode)
+
+    // 10. add connection between nodes
+    _ = g.AddEdge(compose.START, nodeKeyOfTemplate)
+
+    _ = g.AddEdge(nodeKeyOfTemplate, nodeKeyOfChatModel)
+
+    _ = g.AddEdge(nodeKeyOfChatModel, nodeKeyOfTools)
+
+    _ = g.AddEdge(nodeKeyOfTools, compose.END)
+
+    // 9. compile Graph[I, O] to Runnable[I, O]
+    r, err := g.Compile(ctx)
+    if err != nil {
+       logs.Errorf("Compile failed, err=%v", err)
+       return
+    }
+
+    out, err := r.Invoke(ctx, map[string]any{
+       "message_histories": []*schema.Message{},
+       "user_query":        "我叫 zhangsan, 邮箱是 zhangsan@bytedance.com, 帮我推荐一处房产",
+    })
+    if err != nil {
+       logs.Errorf("Invoke failed, err=%v", err)
+       return
+    }
+    logs.Infof("Generation: %v Messages", len(out))
+    for _, msg := range out {
+       logs.Infof("    %v", msg)
+    }
+}
+
+type userInfoRequest struct {
+    Name  string `json:"name"`
+    Email string `json:"email"`
+}
+
+type userInfoResponse struct {
+    Name     string `json:"name"`
+    Email    string `json:"email"`
+    Company  string `json:"company"`
+    Position string `json:"position"`
+    Salary   string `json:"salary"`
+}
+
+type loggerCallbacks struct{}
+
+func (l *loggerCallbacks) OnStart(ctx context.Context, info *callbacks.RunInfo, input callbacks.CallbackInput) context.Context {
+    logs.Infof("name: %v, type: %v, component: %v, input: %v", info.Name, info.Type, info.Component, input)
+    return ctx
+}
+
+func (l *loggerCallbacks) OnEnd(ctx context.Context, info *callbacks.RunInfo, output callbacks.CallbackOutput) context.Context {
+    logs.Infof("name: %v, type: %v, component: %v, output: %v", info.Name, info.Type, info.Component, output)
+    return ctx
+}
+
+func (l *loggerCallbacks) OnError(ctx context.Context, info *callbacks.RunInfo, err error) context.Context {
+    logs.Infof("name: %v, type: %v, component: %v, error: %v", info.Name, info.Type, info.Component, err)
+    return ctx
+}
+
+func (l *loggerCallbacks) OnStartWithStreamInput(ctx context.Context, info *callbacks.RunInfo, input *schema.StreamReader[callbacks.CallbackInput]) context.Context {
+    return ctx
+}
+
+func (l *loggerCallbacks) OnEndWithStreamOutput(ctx context.Context, info *callbacks.RunInfo, output *schema.StreamReader[callbacks.CallbackOutput]) context.Context {
+    return ctx
+}
+Graph with state
+Graph 可以有 graph 自身的“全局”状态，在创建 Graph 时传入 WithGenLocalState Option 开启此功能：
+
+// compose/generic_graph.go
+
+// type GenLocalState[S any] func(ctx context.Context) (state S)
+
+func WithGenLocalState[S any](gls GenLocalState[S]) NewGraphOption {
+    // --snip--
+}
+Add node 时添加 Pre/Post Handler 来处理 State：
+
+// compose/graph_add_node_options.go
+
+// type StatePreHandler[I, S any] func(ctx context.Context, in I, state S) (I, error)
+// type StatePostHandler[O, S any] func(ctx context.Context, out O, state S) (O, error)
+
+func WithStatePreHandler[I, S any](pre StatePreHandler[I, S]) GraphAddNodeOpt {
+    // --snip--
+}
+
+func WithStatePostHandler[O, S any](post StatePostHandler[O, S]) GraphAddNodeOpt {
+    // --snip--
+}
+在 Node 内部，用 ProcessState，传入一个读写 State 的 函数：
+
+// flow/agent/react/react.go
+
+var msg *schema.Message
+err = compose.ProcessState[*state](ctx, func(_ context.Context, state *state) error {
+    for i := range msgs {
+       if msgs[i] != nil && msgs[i].ToolCallID == state.ReturnDirectlyToolCallID {
+          msg = msgs[i]
+          return nil
+       }
+    }
+    return nil
+})
+完整使用例子：
+
+package main
+
+import (
+    "context"
+    "errors"
+    "io"
+    "runtime/debug"
+    "strings"
+    "unicode/utf8"
+
+    "github.com/cloudwego/eino/compose"
+    "github.com/cloudwego/eino/schema"
+    "github.com/cloudwego/eino/utils/safe"
+
+    "github.com/cloudwego/eino-examples/internal/logs"
+)
+
+func main() {
+    ctx := context.Background()
+
+    const (
+       nodeOfL1 = "invokable"
+       nodeOfL2 = "streamable"
+       nodeOfL3 = "transformable"
+    )
+
+    type testState struct {
+       ms []string
+    }
+
+    gen := func(ctx context.Context) *testState {
+       return &testState{}
+    }
+
+    sg := compose.NewGraph[string, string](compose.WithGenLocalState(gen))
+
+    l1 := compose.InvokableLambda(func(ctx context.Context, in string) (out string, err error) {
+       return "InvokableLambda: " + in, nil
+    })
+
+    l1StateToInput := func(ctx context.Context, in string, state *testState) (string, error) {
+       state.ms = append(state.ms, in)
+       return in, nil
+    }
+
+    l1StateToOutput := func(ctx context.Context, out string, state *testState) (string, error) {
+       state.ms = append(state.ms, out)
+       return out, nil
+    }
+
+    _ = sg.AddLambdaNode(nodeOfL1, l1,
+       compose.WithStatePreHandler(l1StateToInput),   compose.WithStatePostHandler(l1StateToOutput))
+
+    l2 := compose.StreamableLambda(func(ctx context.Context, input string) (output *schema.StreamReader[string], err error) {
+       outStr := "StreamableLambda: " + input
+
+       sr, sw := schema.Pipe[string](utf8.RuneCountInString(outStr))
+
+       // nolint: byted_goroutine_recover
+       go func() {
+          for _, field := range strings.Fields(outStr) {
+             sw.Send(field+" ", nil)
+          }
+          sw.Close()
+       }()
+
+       return sr, nil
+    })
+
+    l2StateToOutput := func(ctx context.Context, out string, state *testState) (string, error) {
+       state.ms = append(state.ms, out)
+       return out, nil
+    }
+
+    _ = sg.AddLambdaNode(nodeOfL2, l2, compose.WithStatePostHandler(l2StateToOutput))
+
+    l3 := compose.TransformableLambda(func(ctx context.Context, input *schema.StreamReader[string]) (
+       output *schema.StreamReader[string], err error) {
+
+       prefix := "TransformableLambda: "
+       sr, sw := schema.Pipe[string](20)
+
+       go func() {
+
+          defer func() {
+             panicErr := recover()
+             if panicErr != nil {
+                err := safe.NewPanicErr(panicErr, debug.Stack())
+                logs.Errorf("panic occurs: %v\n", err)
+             }
+
+          }()
+
+          for _, field := range strings.Fields(prefix) {
+             sw.Send(field+" ", nil)
+          }
+
+          for {
+             chunk, err := input.Recv()
+             if err != nil {
+                if err == io.EOF {
+                   break
+                }
+                // TODO: how to trace this kind of error in the goroutine of processing sw
+                sw.Send(chunk, err)
+                break
+             }
+
+             sw.Send(chunk, nil)
+
+          }
+          sw.Close()
+       }()
+
+       return sr, nil
+    })
+
+    l3StateToOutput := func(ctx context.Context, out string, state *testState) (string, error) {
+       state.ms = append(state.ms, out)
+       logs.Infof("state result: ")
+       for idx, m := range state.ms {
+          logs.Infof("    %vth: %v", idx, m)
+       }
+       return out, nil
+    }
+
+    _ = sg.AddLambdaNode(nodeOfL3, l3, compose.WithStatePostHandler(l3StateToOutput))
+
+    _ = sg.AddEdge(compose.START, nodeOfL1)
+
+    _ = sg.AddEdge(nodeOfL1, nodeOfL2)
+
+    _ = sg.AddEdge(nodeOfL2, nodeOfL3)
+
+    _ = sg.AddEdge(nodeOfL3, compose.END)
+
+    run, err := sg.Compile(ctx)
+    if err != nil {
+       logs.Errorf("sg.Compile failed, err=%v", err)
+       return
+    }
+
+    out, err := run.Invoke(ctx, "how are you")
+    if err != nil {
+       logs.Errorf("run.Invoke failed, err=%v", err)
+       return
+    }
+    logs.Infof("invoke result: %v", out)
+
+    stream, err := run.Stream(ctx, "how are you")
+    if err != nil {
+       logs.Errorf("run.Stream failed, err=%v", err)
+       return
+    }
+
+    for {
+
+       chunk, err := stream.Recv()
+       if err != nil {
+          if errors.Is(err, io.EOF) {
+             break
+          }
+          logs.Infof("stream.Recv() failed, err=%v", err)
+          break
+       }
+
+       logs.Tokenf("%v", chunk)
+    }
+    stream.Close()
+
+    sr, sw := schema.Pipe[string](1)
+    sw.Send("how are you", nil)
+    sw.Close()
+
+    stream, err = run.Transform(ctx, sr)
+    if err != nil {
+       logs.Infof("run.Transform failed, err=%v", err)
+       return
+    }
+
+    for {
+
+       chunk, err := stream.Recv()
+       if err != nil {
+          if errors.Is(err, io.EOF) {
+             break
+          }
+          logs.Infof("stream.Recv() failed, err=%v", err)
+          break
+       }
+
+       logs.Infof("%v", chunk)
+    }
+    stream.Close()
+}
+Chain
+Chain 可以视为是 Graph 的简化封装
+
+package main
+
+import (
+    "context"
+    "fmt"
+    "log"
+    "math/rand"
+    "os"
+
+    "github.com/cloudwego/eino-ext/components/model/openai"
+    "github.com/cloudwego/eino/components/prompt"
+    "github.com/cloudwego/eino/compose"
+    "github.com/cloudwego/eino/schema"
+
+    "github.com/cloudwego/eino-examples/internal/gptr"
+    "github.com/cloudwego/eino-examples/internal/logs"
+)
+
+func main() {
+    openAPIBaseURL := os.Getenv("OPENAI_BASE_URL")
+    openAPIAK := os.Getenv("OPENAI_API_KEY")
+    modelName := os.Getenv("MODEL_NAME")
+
+    ctx := context.Background()
+    // build branch func
+    const randLimit = 2
+    branchCond := func(ctx context.Context, input map[string]any) (string, error) { // nolint: byted_all_nil_return
+       if rand.Intn(randLimit) == 1 {
+          return "b1", nil
+       }
+
+       return "b2", nil
+    }
+
+    b1 := compose.InvokableLambda(func(ctx context.Context, kvs map[string]any) (map[string]any, error) {
+       logs.Infof("hello in branch lambda 01")
+       if kvs == nil {
+          return nil, fmt.Errorf("nil map")
+       }
+
+       kvs["role"] = "cat"
+       return kvs, nil
+    })
+
+    b2 := compose.InvokableLambda(func(ctx context.Context, kvs map[string]any) (map[string]any, error) {
+       logs.Infof("hello in branch lambda 02")
+       if kvs == nil {
+          return nil, fmt.Errorf("nil map")
+       }
+
+       kvs["role"] = "dog"
+       return kvs, nil
+    })
+
+    // build parallel node
+    parallel := compose.NewParallel()
+    parallel.
+       AddLambda("role", compose.InvokableLambda(func(ctx context.Context, kvs map[string]any) (string, error) {
+          // may be change role to others by input kvs, for example (dentist/doctor...)
+          role, ok := kvs["role"].(string)
+          if !ok || role == "" {
+             role = "bird"
+          }
+
+          return role, nil
+       })).
+       AddLambda("input", compose.InvokableLambda(func(ctx context.Context, kvs map[string]any) (string, error) {
+          return "你的叫声是怎样的？", nil
+       }))
+
+    modelConf := &openai.ChatModelConfig{
+       BaseURL:     openAPIBaseURL,
+       APIKey:      openAPIAK,
+       ByAzure:     true,
+       Model:       modelName,
+       Temperature: gptr.Of(float32(0.7)),
+       APIVersion:  "2024-06-01",
+    }
+
+    // create chat model node
+    cm, err := openai.NewChatModel(context.Background(), modelConf)
+    if err != nil {
+       log.Panic(err)
+       return
+    }
+
+    rolePlayerChain := compose.NewChain[map[string]any, *schema.Message]()
+    rolePlayerChain.
+       AppendChatTemplate(prompt.FromMessages(schema.FString, schema.SystemMessage(`You are a {role}.`), schema.UserMessage(`{input}`))).
+       AppendChatModel(cm)
+
+    // =========== build chain ===========
+    chain := compose.NewChain[map[string]any, string]()
+    chain.
+       AppendLambda(compose.InvokableLambda(func(ctx context.Context, kvs map[string]any) (map[string]any, error) {
+          // do some logic to prepare kv as input val for next node
+          // just pass through
+          logs.Infof("in view lambda: %v", kvs)
+          return kvs, nil
+       })).
+       AppendBranch(compose.NewChainBranch(branchCond).AddLambda("b1", b1).AddLambda("b2", b2)). // nolint: byted_use_receiver_without_nilcheck
+       AppendPassthrough().
+       AppendParallel(parallel).
+       AppendGraph(rolePlayerChain).
+       AppendLambda(compose.InvokableLambda(func(ctx context.Context, m *schema.Message) (string, error) {
+          // do some logic to check the output or something
+          logs.Infof("in view of messages: %v", m.Content)
+          return m.Content, nil
+       }))
+
+    // compile
+    r, err := chain.Compile(ctx)
+    if err != nil {
+       log.Panic(err)
+       return
+    }
+
+    output, err := r.Invoke(context.Background(), map[string]any{})
+    if err != nil {
+       log.Panic(err)
+       return
+    }
+
+    logs.Infof("output is : %v", output)
+}
+
+
+
+
+
+
+Eino: Flow 集成
+大模型应用是存在通用场景和模式的，若把这些场景进行抽象，就能提供一些可以帮助开发者快速构建大模型应用的模版。Eino 的 Flow 模块就是在做这件事。
+
+目前 Eino 已经集成了 react agent、host multi agent 两个常用的 Agent 模式，以及 MultiQueryRetriever, ParentIndexer 等。
+
+React Agent: Eino: React Agent 使用手册
+Multi Agent: Eino Tutorial: Host Multi-Agent
+Flow 进编排
+Flow 集成组件自身一般是由一个或多个 graph 编排而成。同时，这些 flow 也可以作为节点进入其他 graph 的编排之中，方式有三种：
+
+如果一个 flow 实现了某个组件的 interface，可用该组件对应的 AddXXXNode 等方法加入编排，如 multiquery retriever：
+
+// instantiate the flow: multiquery.NewRetriever
+
+vk, err := newVikingDBRetriever(ctx, vikingDBHost, vikingDBRegion, vikingDBAK, vikingDBSK)
+if err != nil {
+    logs.Errorf("newVikingDBRetriever failed, err=%v", err)
+    return
+}
+
+llm, err := newChatModel(ctx, openAIBaseURL, openAIAPIKey, openAIModelName)
+if err != nil {
+    logs.Errorf("newChatModel failed, err=%v", err)
+    return
+}
+
+// rewrite query by llm
+mqr, err := multiquery.NewRetriever(ctx, &multiquery.Config{
+    RewriteLLM:      llm,
+    RewriteTemplate: nil, // use default
+    QueryVar:        "",  // use default
+    LLMOutputParser: nil, // use default
+    MaxQueriesNum:   3,
+    OrigRetriever:   vk,
+    FusionFunc:      nil, // use default fusion, just deduplicate by doc id
+})
+if err != nil {
+    logs.Errorf("NewMultiQueryRetriever failed, err=%v", err)
+    return
+}
+
+// add the flow to graph
+graph := compose.NewGraph[string, *schema.Message]()
+_ = graph.AddRetrieverNode("multi_query_retriever", mqr, compose.WithOutputKey("context"))
+_ = graph.AddEdge(compose._START_, "multi_query_retriever")
+_ = graph.AddChatTemplateNode("template", prompt.FromMessages(schema._FString_, schema.UserMessage("{context}")))
+
+// ...
+如果一个 flow 内部是由单个 graph 编排而成，且 flow 的功能可完全等价于这个 graph 的运行（没有不能转化成 graph run 的定制逻辑），则可以将该 flow 的 graph 导出，通过 AddGraphNode 等方法加入编排，如 ReAct Agent 和 Host Multi-Agent：
+
+// instantiate the host multi-agent
+hostMA, err := NewMultiAgent(ctx, &MultiAgentConfig{
+    Host: Host{
+       ChatModel: mockHostLLM,
+    },
+    Specialists: []*Specialist{
+       specialist1,
+       specialist2,
+    },
+})
+assert.Nil(t, err)
+
+// export graph and []GraphAddNodeOption from host multi-agent
+maGraph, opts := hostMA.ExportGraph()
+
+// add to another graph 
+fullGraph, err := compose.NewChain[map[string]any, *schema.Message]().
+    AppendChatTemplate(prompt.FromMessages(schema._FString_, schema.UserMessage("what's the capital city of {country_name}"))).
+    AppendGraph(maGraph, append(opts, compose.WithNodeKey("host_ma_node"))...).
+    Compile(ctx)
+assert.Nil(t, err)
+
+// invoke the other graph
+// convert the flow's own option to compose.Option if needed
+// assign options to flow's nodes if needed
+out, err := fullGraph.Invoke(ctx, map[string]any{"country_name": "China"}, 
+    compose.WithCallbacks(ConvertCallbackHandlers(mockCallback)).
+        DesignateNodeWithPath(compose.NewNodePath("host_ma_node", hostMA.HostNodeKey())))
+所有 flow 应当都可以封装成 Lambda，通过 AddLambdaNode 等方法加入编排。目前所有的 flow 都可以通过 1 或 2 加入编排，所以不需要降级到使用 Lambda。如果要用，使用姿势是：
+
+// instantiate the flow
+a, err := NewAgent(ctx, &AgentConfig{
+    Model: cm,
+    ToolsConfig: compose.ToolsNodeConfig{
+       Tools: []tool.BaseTool{fakeTool, &fakeStreamToolGreetForTest{}},
+    },
+
+    MaxStep: 40,
+})
+assert.Nil(t, err)
+
+chain := compose.NewChain[[]*schema.Message, string]()
+
+// convert the flow to Lambda
+agentLambda, err := compose.AnyLambda(a.Generate, a.Stream, nil, nil)
+assert.Nil(t, err)
+
+// add lambda to another graph
+chain.
+    AppendLambda(agentLambda).
+    AppendLambda(compose.InvokableLambda(func(ctx context.Context, input *schema.Message) (string, error) {
+       t.Log("got agent response: ", input.Content)
+       return input.Content, nil
+    }))
+r, err := chain.Compile(ctx)
+assert.Nil(t, err)
+
+// invoke the graph
+res, err := r.Invoke(ctx, []*schema.Message{{Role: schema._User_, Content: "hello"}},
+    compose.WithCallbacks(callbackForTest))
+三个方法的对比如下：
+
+方式	适用场景	优势
+作为组件	需实现组件的 interface	简单直接，语义清晰
+作为 Graph	由单个 graph 编排而成，功能不超出这个 graph 的范围	graph 内节点对外层 graph 暴露，可统一分配运行时 option，相比 Lambda 少一层转化，可通过 GraphCompileCallback 获取上下级 graph 关系
+作为 Lambda	所有	普适
+
+
+
+ChatModel - ARK
+基本介绍
+Ark 是 ChatModel 接口的一个实现，用于与火山引擎 Ark Runtime 服务进行交互。Ark Runtime 是火山引擎提供的大语言模型运行时服务，提供了丰富的模型选择和完整的 API 功能。本组件通过 Ark Runtime Go SDK 与服务进行交互，可调用火山引擎上部署的 豆包大模型、暗影之月大模型 等。该组件实现了 Eino: ChatModel 使用说明。
+
+使用方式
+组件初始化
+Ark 模型通过 NewChatModel 函数进行初始化，主要配置参数如下：
+
+import "github.com/cloudwego/eino-ext/components/model/ark"
+
+model, err := ark.NewChatModel(ctx, &ark.ChatModelConfig{
+    // 服务配置
+    BaseURL:    "https://ark.cn-beijing.volces.com/api/v3", // 服务地址
+    Region:     "cn-beijing",                               // 区域
+    HTTPClient: httpClient,                                 // 自定义 HTTP 客户端
+    Timeout:    &timeout,                                   // 超时时间
+    RetryTimes: &retries,                                  // 重试次数
+    
+    // 认证配置（二选一）
+    APIKey:    "your-api-key",     // API Key 认证
+    AccessKey: "your-ak",          // AK/SK 认证
+    SecretKey: "your-sk",
+    
+    // 模型配置
+    Model:     "endpoint-id",      // 模型端点 ID
+    
+    // 生成参数
+    MaxTokens:         &maxTokens, // 最大生成长度
+    Temperature:       &temp,      // 温度
+    TopP:             &topP,      // Top-P 采样
+    Stop:             []string{},  // 停止词
+    FrequencyPenalty: &fp,        // 频率惩罚
+    PresencePenalty:  &pp,        // 存在惩罚
+    
+    // 高级参数
+    LogitBias:        map[string]int{}, // Token 偏置
+    CustomHeader:     map[string]string{}, // http custom header
+})
+生成对话
+对话生成支持普通模式和流式模式：
+
+func main() {
+    // 普通模式
+    response, err := model.Generate(ctx, messages)
+    
+    // 流式模式
+    stream, err := model.Stream(ctx, messages)
+}
+消息格式示例：
+
+注意，是否支持多模态的图片需要看具体的模型
+
+func main() {
+    messages := []*schema.Message{
+        // 系统消息
+        schema.SystemMessage("你是一个助手"),
+        
+        // 多模态消息（包含图片）
+        {
+            Role: schema.User,
+            MultiContent: []schema.ChatMessagePart{
+                {
+                    Type: schema.ChatMessagePartTypeText,
+                    Text: "这张图片是什么？",
+                },
+                {
+                    Type: schema.ChatMessagePartTypeImageURL,
+                    ImageURL: &schema.ChatMessageImageURL{
+                        URL:    "https://example.com/image.jpg",
+                        Detail: schema.ImageURLDetailAuto,
+                    },
+                },
+            },
+        },
+    }
+}
+工具调用
+支持绑定工具：
+
+// 定义工具
+tools := []*schema.ToolInfo{
+    {
+        Name: "search",
+        Desc: "搜索信息",
+        ParamsOneOf: schema.NewParamsOneOfByParams(map[string]*schema.ParameterInfo{
+            "query": {
+                Type:     schema.String,
+                Desc:     "搜索关键词",
+                Required: true,
+            },
+        }),
+    },
+}
+
+// 绑定工具
+err := model.BindTools(tools)
+工具相关信息，可以参考 [🚧]Eino: ToolsNode 使用说明
+
+完整使用示例
+直接对话
+package main
+
+import (
+    "context"
+    "time"
+
+    "github.com/cloudwego/eino-ext/components/model/ark"
+    "github.com/cloudwego/eino/schema"
+)
+
+func main() {
+    ctx := context.Background()
+
+    timeout := 30 * time.Second
+    // 初始化模型
+    model, err := ark.NewChatModel(ctx, &ark.ChatModelConfig{
+       APIKey:  "your-api-key",
+       Region:  "cn-beijing",
+       Model:   "endpoint-id",
+       Timeout: &timeout,
+    })
+    if err != nil {
+       panic(err)
+    }
+
+    // 准备消息
+    messages := []*schema.Message{
+       schema.SystemMessage("你是一个助手"),
+       schema.UserMessage("介绍一下火山引擎"),
+    }
+
+    // 生成回复
+    response, err := model.Generate(ctx, messages)
+    if err != nil {
+       panic(err)
+    }
+
+    // 处理回复
+    println(response.Content)
+
+    // 获取 Token 使用情况
+    if usage := response.ResponseMeta.Usage; usage != nil {
+       println("提示 Tokens:", usage.PromptTokens)
+       println("生成 Tokens:", usage.CompletionTokens)
+       println("总 Tokens:", usage.TotalTokens)
+    }
+}
+流式对话
+package main
+
+import (
+    "context"
+    "time"
+    
+    "github.com/cloudwego/eino-ext/components/model/ark"
+    "github.com/cloudwego/eino/schema"
+)
+
+func main() {
+    ctx := context.Background()
+    
+    // 初始化模型
+    model, err := ark.NewChatModel(ctx, &ark.ChatModelConfig{
+        APIKey:  "your-api-key",
+        Model:   "ep-xxx",
+    })
+    if err != nil {
+        panic(err)
+    }
+    
+    // 准备消息
+    messages := []*schema.Message{
+        schema.SystemMessage("你是一个助手"),
+        schema.UserMessage("介绍一下 Eino"),
+    }
+    
+    // 获取流式回复
+    reader, err := model.Stream(ctx, messages)
+    if err != nil {
+        panic(err)
+    }
+    defer reader.Close() // 注意要关闭
+    
+    // 处理流式内容
+    for {
+        chunk, err := reader.Recv()
+        if err != nil {
+            break
+        }
+        print(chunk.Content)
+    }
+}
+
+
+ChatModel - OpenAI
+基本介绍
+OpenAI 模型是 ChatModel 接口的一个实现，用于与 OpenAI 的 GPT 系列模型进行交互。该组件实现了 Eino: ChatModel 使用说明，主要用于以下场景：
+
+需要使用 OpenAI 的 GPT 系列模型
+需要使用 Azure OpenAI Service
+使用其他 OpenAI 接口兼容的模型
+使用方式
+组件初始化
+OpenAI 模型通过 NewChatModel 函数进行初始化，主要配置参数如下：
+
+import "github.com/cloudwego/eino-ext/components/model/openai"
+
+model, err := openai.NewChatModel(ctx, &openai.ChatModelConfig{
+    // Azure OpenAI Service 配置（可选）
+    ByAzure:    false,           // 是否使用 Azure OpenAI
+    BaseURL:    "your-url",      // Azure API 基础 URL
+    APIVersion: "2023-05-15",    // Azure API 版本
+
+    // 基础配置
+    APIKey:  "your-key",         // API 密钥
+    Timeout: 30 * time.Second,   // 超时时间
+
+    // 模型参数
+    Model:            "gpt-4",   // 模型名称
+    MaxTokens:        &maxTokens,// 最大生成长度
+    Temperature:      &temp,     // 温度
+    TopP:             &topP,     // Top-P 采样
+    Stop:             []string{},// 停止词
+    PresencePenalty:  &pp,      // 存在惩罚
+    FrequencyPenalty: &fp,      // 频率惩罚
+
+    // 高级参数
+    ResponseFormat:   &format,   // 响应格式
+    Seed:            &seed,      // 随机种子
+    LogitBias:       map[string]int{}, // Token 偏置
+    User:            &user,      // 用户标识
+})
+参数具体含义，可以参考: https://platform.openai.com/docs/api-reference/chat/create
+azure 相关服务，可以参考: https://learn.microsoft.com/en-us/azure/ai-services/openai/
+生成对话
+对话生成支持普通模式和流式模式：
+
+// invoke模式
+response, err := model.Generate(ctx, messages)
+    
+// 流式模式
+stream, err := model.Stream(ctx, messages)
+消息格式示例：
+
+import "github.com/cloudwego/eino/schema"
+
+messages := []*schema.Message{
+    // 系统消息
+    schema.SystemMessage("你是一个助手"),
+    
+    // 多模态消息（包含图片）
+    {
+        Role: schema.User,
+        MultiContent: []schema.ChatMessagePart{
+            {
+                Type: schema.ChatMessagePartTypeImageURL,
+                ImageURL: &schema.ChatMessageImageURL{
+                    URL:    "https://example.com/image.jpg",
+                    Detail: "high",
+                },
+            },
+            {
+                Type: schema.ChatMessagePartTypeText,
+                Text: "这张图片是什么？",
+            },
+        },
+    },
+}
+工具调用
+支持绑定工具和强制工具调用：
+
+import "github.com/cloudwego/eino/schema"
+
+// 定义工具
+tools := []*schema.ToolInfo{
+    {
+       Name: "search",
+       Desc: "搜索信息",
+       ParamsOneOf: schema.NewParamsOneOfByParams(map[string]*schema.ParameterInfo{
+          "query": {
+             Type:     schema.String,
+             Desc:     "搜索关键词",
+             Required: true,
+          },
+       }),
+    },
+}
+
+// 绑定可选工具
+err := model.BindTools(tools)
+
+// 绑定强制工具
+err := model.BindForcedTools(tools)
+工具相关信息，可以参考 Eino: ToolsNode 使用说明
+
+完整使用示例
+直接对话
+package main
+
+import (
+    "context"
+    "time"
+    
+    "github.com/cloudwego/eino-ext/components/model/openai"
+    "github.com/cloudwego/eino/schema"
+)
+
+func main() {
+    ctx := context.Background()
+    
+    // 初始化模型
+    model, err := openai.NewChatModel(ctx, &openai.ChatModelConfig{
+        APIKey:  "your-api-key", // required
+        Timeout: 30 * time.Second,
+        Model:   "gpt-4", // required
+    })
+    if err != nil {
+        panic(err)
+    }
+    
+    // 准备消息
+    messages := []*schema.Message{
+        schema.SystemMessage("你是一个助手"),
+        schema.UserMessage("介绍一下 eino"),
+    }
+    
+    // 生成回复
+    response, err := model.Generate(ctx, messages)
+    if err != nil {
+        panic(err)
+    }
+    
+    // 处理回复
+    println(response.Content)
+}
+流式对话
+package main
+
+import (
+    "context"
+    "time"
+    
+    "github.com/cloudwego/eino-ext/components/model/openai"
+    "github.com/cloudwego/eino/schema"
+)
+
+func main() {
+    ctx := context.Background()
+    
+    // 初始化模型
+    model, err := openai.NewChatModel(ctx, &openai.ChatModelConfig{
+        APIKey:  "your-api-key",
+        Timeout: 30 * time.Second,
+        Model:   "gpt-4",
+    })
+    if err != nil {
+        panic(err)
+    }
+    
+    // 准备消息
+    messages := []*schema.Message{
+        schema.SystemMessage("你是一个助手"),
+        schema.UserMessage("写一个故事"),
+    }
+    
+    // 获取流式回复
+    reader, err := model.Stream(ctx, messages)
+    if err != nil {
+        panic(err)
+    }
+    defer reader.Close() // 注意要关闭
+    
+    // 处理流式内容
+    for {
+        chunk, err := reader.Recv()
+        if err != nil {
+            break
+        }
+        print(chunk.Content)
+    }
+}
+
+
+
+
+
+
+Loader - local file
+基本介绍
+local file 文件加载器是 Document Loader 接口的一个实现，用于从本地文件系统中加载文档内容。该组件实现了 Eino: Document Loader 使用说明。
+
+特性介绍
+本地文件加载器具有以下特点：
+
+支持通过文件路径直接加载文档
+自动识别文件类型并选择合适的解析器 (需设置 ExtParser)
+保留文件的元数据信息
+支持将文件名作为文档 ID
+使用方式
+组件初始化
+本地文件加载器通过 NewFileLoader 函数进行初始化，主要配置参数如下：
+
+import (
+    "github.com/cloudwego/eino-ext/components/document/loader/file"
+)
+
+func main() {
+    loader, err := file.NewFileLoader(ctx, &file.FileLoaderConfig{
+        UseNameAsID: true,                // 是否使用文件名作为文档ID
+        Parser:      &parser.TextParser{}, // 可选：指定自定义解析器
+    })
+}
+配置参数说明：
+
+UseNameAsID：是否将文件名用作文档 ID
+Parser：文档解析器，如果不指定则使用默认的扩展名解析器（ExtParser，当前仅实现了 TextParser）
+加载文档
+文档加载通过 Load 方法实现：
+
+docs, err := loader.Load(ctx, document.Source{
+    URI: "./path/to/document.txt",
+})
+文档加载后会自动添加以下元数据：
+
+_file_name：文件名
+_extension：文件扩展名
+_source：文件的完整路径
+注意事项：
+
+路径必须指向一个文件，不能是目录
+文件必须可读
+如果 UseNameAsID 为 true，单文件时使用文件名作为 ID，多文档时使用 文件名_序号 作为 ID
+完整使用示例
+单独使用
+package main
+
+import (
+    "context"
+    
+    file "github.com/cloudwego/eino-ext/components/document/loader/file"
+    "github.com/cloudwego/eino/components/document"
+)
+
+func main() {
+    ctx := context.Background()
+    
+    // 初始化加载器
+    loader, err := file.NewFileLoader(ctx, &file.FileLoaderConfig{
+        UseNameAsID: true,
+    })
+    if err != nil {
+        panic(err)
+    }
+    
+    // 加载文档
+    docs, err := loader.Load(ctx, document.Source{
+        URI: "./documents/sample.txt",
+    })
+    if err != nil {
+        panic(err)
+    }
+    
+    // 使用文档内容
+    for _, doc := range docs {
+        println(doc.Content)
+        // 访问元数据
+        fileName := doc.MetaData[file.MetaKeyFileName]
+        extension := doc.MetaData[file.MetaKeyExtension]
+        source := doc.MetaData[file.MetaKeySource]
+    }
+}
+
+
+
+
+Parser - html
+基本介绍
+HTML 文档解析器是 Document Parser 接口的一个实现，用于将 HTML 网页内容解析为纯文本。该组件实现了 Eino: Document Parser 接口使用说明，主要用于以下场景：
+
+需要从网页中提取纯文本内容
+需要获取网页的元数据（标题、描述等）
+特性介绍
+HTML 解析器具有以下特点：
+
+支持选择性提取页面内容，灵活的内容选择器配置 (html selector)
+自动提取网页元数据 (metadata)
+安全的 HTML 解析
+使用方式
+组件初始化
+HTML 解析器通过 NewParser 函数进行初始化，主要配置参数如下：
+
+import (
+  "github.com/cloudwego/eino-ext/components/document/parser/html"
+)
+
+parser, err := html.NewParser(ctx, &html.Config{
+    Selector: &selector, // 可选：内容选择器，默认为 body
+})
+配置参数说明：
+
+Selector：可选参数，指定要提取的内容区域，使用 goquery 选择器语法
+例如：body 表示提取 <body> 标签内容
+#content 表示提取 id 为 “content” 的元素内容
+元数据说明
+解析器会自动提取以下 metadata：
+
+html.MetaKeyTitle ("_title")：网页标题
+html.MetaKeyDesc ("_description")：网页描述
+html.MetaKeyLang ("_language")：网页语言
+html.MetaKeyCharset ("_charset")：字符编码
+html.MetaKeySource ("_source")：文档来源 URI
+完整使用示例
+基本使用
+package main
+
+import (
+    "context"
+    "strings"
+    
+    "github.com/cloudwego/eino-ext/components/document/parser/html"
+    "github.com/cloudwego/eino/components/document/parser"
+)
+
+func main() {
+    ctx := context.Background()
+    
+    // 初始化解析器
+    p, err := html.NewParser(ctx, nil) // 使用默认配置
+    if err != nil {
+        panic(err)
+    }
+    
+    // HTML 内容
+    document := `
+    <html lang="zh">
+        <head>
+            <title>示例页面</title>
+            <meta name="description" content="这是一个示例页面">
+            <meta charset="UTF-8">
+        </head>
+        <body>
+            <div id="content">
+                <h1>欢迎</h1>
+                <p>这是正文内容。</p>
+            </div>
+        </body>
+    </html>
+    `
+    
+    // 解析文档
+    docs, err := p.Parse(ctx, strings.NewReader(document),
+        parser.WithURI("https://example.com"),
+        parser.WithExtraMeta(map[string]any{
+            "custom": "value",
+        }),
+    )
+    if err != nil {
+        panic(err)
+    }
+    
+    // 使用解析结果
+    doc := docs[0]
+	fmt.Println("内容:", doc.Content)
+	fmt.Println("标题:", doc.MetaData[html.MetaKeyTitle])
+	fmt.Println("描述:", doc.MetaData[html.MetaKeyDesc])
+	fmt.Println("语言:", doc.MetaData[html.MetaKeyLang])
+}
+使用选择器
+package main
+
+import (
+    "context"
+    
+    "github.com/cloudwego/eino-ext/components/document/parser/html"
+)
+
+func main() {
+    ctx := context.Background()
+    
+    // 指定只提取 id 为 content 的元素内容
+    selector := "#content"
+    p, err := html.NewParser(ctx, &html.Config{
+        Selector: &selector,
+    })
+    if err != nil {
+        panic(err)
+    }
+    
+    // ... 解析文档的代码 ...
+}
+
+
+
+
+
+Parser - pdf
+基本介绍
+PDF 文档解析器是 Document Parser 接口的一个实现，用于将 PDF 文件内容解析为纯文本。该组件实现了 Eino: Document Parser 接口使用说明，主要用于以下场景：
+
+需要将 PDF 文档转换为可处理的纯文本格式
+需要按页面分割 PDF 文档内容
+特性说明
+PDF 解析器具有以下特点：
+
+支持基本的 PDF 文本提取
+可以选择按页面分割文档
+自动处理 PDF 字体和编码
+支持多页面 PDF 文档
+注意事项：
+
+目前可能不能完全支持所有 PDF 格式
+不会保留空格和换行等格式信息
+复杂的 PDF 布局可能会影响提取效果
+使用方式
+组件初始化
+PDF 解析器通过 NewPDFParser 函数进行初始化，主要配置参数如下：
+
+import (
+  "github.com/cloudwego/eino-ext/components/document/parser/pdf"
+)
+
+func main() {
+    parser, err := pdf.NewPDFParser(ctx, &pdf.Config{
+        ToPages: true,  // 是否按页面分割文档
+    })
+}
+配置参数说明：
+
+ToPages：是否将 PDF 按页面分割成多个文档，默认为 false
+解析文档
+文档解析通过 Parse 方法实现：
+
+docs, err := parser.Parse(ctx, reader, opts...)
+解析选项：
+
+支持通过 parser.WithURI 设置文档 URI
+支持通过 parser.WithExtraMeta 添加额外元数据
+完整使用示例
+基本使用
+package main
+
+import (
+    "context"
+    "os"
+    
+    "github.com/cloudwego/eino-ext/components/document/parser/pdf"
+    "github.com/cloudwego/eino/components/document/parser"
+)
+
+func main() {
+    ctx := context.Background()
+    
+    // 初始化解析器
+    p, err := pdf.NewPDFParser(ctx, &pdf.Config{
+        ToPages: false, // 不按页面分割
+    })
+    if err != nil {
+        panic(err)
+    }
+    
+    // 打开 PDF 文件
+    file, err := os.Open("document.pdf")
+    if err != nil {
+        panic(err)
+    }
+    defer file.Close()
+    
+    // 解析文档
+    docs, err := p.Parse(ctx, file, 
+        parser.WithURI("document.pdf"),
+        parser.WithExtraMeta(map[string]any{
+            "source": "./document.pdf",
+        }),
+    )
+    if err != nil {
+        panic(err)
+    }
+    
+    // 使用解析结果
+    for _, doc := range docs {
+        println(doc.Content)
+    }
+}
+
+
+
+
+
+Splitter - markdown
+基本介绍
+Markdown 分割器是 Document Transformer 接口的一个实现，用于根据 Markdown 文档的标题层级结构进行分割。该组件实现了 Eino: Document Transformer 使用说明。
+
+工作原理
+Markdown 标题分割器通过以下步骤工作：
+
+识别文档中的 Markdown 标题（#、##、### 等）
+根据标题层级构建文档结构树
+将文档按标题分割成独立片段
+使用方式
+组件初始化
+Markdown 标题分割器通过 NewHeaderSplitter 函数进行初始化，主要配置参数如下：
+
+splitter, err := markdown.NewHeaderSplitter(ctx, &markdown.HeaderConfig{
+    Headers: map[string]string{
+        "#":   "h1",              // 一级标题
+        "##":  "h2",              // 二级标题
+        "###": "h3",              // 三级标题
+    },
+    TrimHeaders: false,           // 是否在输出中保留标题行
+})
+配置参数说明：
+
+Headers：必需参数，定义标题标记和对应的元数据键名映射
+TrimHeaders：是否在输出的内容中移除标题行
+完整使用示例
+package main
+
+import (
+    "context"
+    
+    "github.com/cloudwego/eino-ext/components/document/transformer/splitter/markdown"
+    "github.com/cloudwego/eino/schema"
+)
+
+func main() {
+    ctx := context.Background()
+    
+    // 初始化分割器
+    splitter, err := markdown.NewHeaderSplitter(ctx, &markdown.HeaderConfig{
+        Headers: map[string]string{
+            "#":   "h1",
+            "##":  "h2",
+            "###": "h3",
+        },
+        TrimHeaders: false,
+    })
+    if err != nil {
+        panic(err)
+    }
+    
+    // 准备要分割的文档
+    docs := []*schema.Document{
+        {
+            ID: "doc1",
+            Content: `# 文档标题
+
+这是介绍部分的内容。
+
+## 第一章
+
+这是第一章的内容。
+
+### 1.1 节
+
+这是 1.1 节的内容。
+
+## 第二章
+
+这是第二章的内容。
+
+\`\`\`
+# 这是代码块中的注释，不会被识别为标题
+\`\`\`
+`,
+        },
+    }
+    
+    // 执行分割
+    results, err := splitter.Transform(ctx, docs)
+    if err != nil {
+        panic(err)
+    }
+    
+    // 处理分割结果
+    for i, doc := range results {
+        println("片段", i+1, ":", doc.Content)
+        println("标题层级：")
+        for k, v := range doc.MetaData {
+            if k == "h1" || k == "h2" || k == "h3" {
+                println("  ", k, ":", v)
+            }
+        }
+    }
+}
+
+
+
+
+
+Splitter - recursive
+基本介绍
+递归分割器是 Document Transformer 接口的一个实现，用于将长文档按照指定大小递归地切分成更小的片段。该组件实现了 Eino: Document Transformer 使用说明。
+
+工作原理
+递归分割器通过以下步骤工作：
+
+按照分隔符列表顺序尝试分割文档
+如果当前分隔符无法将文档分割成小于目标大小的片段，则使用下一个分隔符
+对分割后的片段进行合并，确保片段大小接近目标大小
+在合并过程中保持指定大小的重叠区域
+使用方式
+组件初始化
+递归分割器通过 NewSplitter 函数进行初始化，主要配置参数如下：
+
+splitter, err := recursive.NewSplitter(ctx, &recursive.Config{
+    ChunkSize:    1000,           // 必需：目标片段大小
+    OverlapSize:  200,            // 可选：片段重叠大小
+    Separators:   []string{"\n", ".", "?", "!"}, // 可选：分隔符列表
+    LenFunc:      nil,            // 可选：自定义长度计算函数
+    KeepType:     recursive.KeepTypeNone, // 可选：分隔符保留策略
+})
+配置参数说明：
+
+ChunkSize：必需参数，指定目标片段的大小
+OverlapSize：片段之间的重叠大小，用于保持上下文连贯性
+Separators：分隔符列表，按优先级顺序使用
+LenFunc：自定义文本长度计算函数，默认使用 len()
+KeepType：分隔符保留策略，可选值：
+KeepTypeNone：不保留分隔符
+KeepTypeStart：在片段开始处保留分隔符
+KeepTypeEnd：在片段结尾处保留分隔符
+完整使用示例
+package main
+
+import (
+    "context"
+    
+    "github.com/cloudwego/eino-ext/components/document/transformer/splitter/recursive"
+    "github.com/cloudwego/eino/schema"
+)
+
+func main() {
+    ctx := context.Background()
+    
+    // 初始化分割器
+    splitter, err := recursive.NewSplitter(ctx, &recursive.Config{
+        ChunkSize:   1000,
+        OverlapSize: 200,
+        Separators:  []string{"\n\n", "\n", "。", "！", "？"},
+        KeepType:    recursive.KeepTypeEnd,
+    })
+    if err != nil {
+        panic(err)
+    }
+    
+    // 准备要分割的文档
+    docs := []*schema.Document{
+        {
+            ID: "doc1",
+            Content: `这是第一个段落，包含了一些内容。
+            
+            这是第二个段落。这个段落有多个句子！这些句子通过标点符号分隔。
+            
+            这是第三个段落。这里有更多的内容。`,
+        },
+    }
+    
+    // 执行分割
+    results, err := splitter.Transform(ctx, docs)
+    if err != nil {
+        panic(err)
+    }
+    
+    // 处理分割结果
+    for i, doc := range results {
+        println("片段", i+1, ":", doc.Content)
+    }
+}
+高级用法
+自定义长度计算：
+
+splitter, err := recursive.NewSplitter(ctx, &recursive.Config{
+    ChunkSize: 1000,
+    LenFunc: func(s string) int {
+        // eg: 使用 unicode 字符数而不是字节数
+        return len([]rune(s))
+    },
+})
+调整重叠策略：
+
+splitter, err := recursive.NewSplitter(ctx, &recursive.Config{
+    ChunkSize:   1000,
+    // 增大重叠区域以保持更多上下文
+    OverlapSize: 300,
+    // 在片段结尾保留分隔符
+    KeepType:    recursive.KeepTypeEnd,
+})
+自定义分隔符：
+
+splitter, err := recursive.NewSplitter(ctx, &recursive.Config{
+    ChunkSize: 1000,
+    // 按优先级排序的分隔符列表
+    Separators: []string{
+        "\n\n",     // 空行（段落分隔）
+        "\n",       // 换行
+        "。",       // 句号
+    },
+})
+
+
+
+
+
+
+Splitter - semantic
+基本介绍
+语义分割器是 Document Transformer 接口的一个实现，用于基于语义相似度将长文档切分成更小的片段。该组件实现了 Eino: Document Transformer 使用说明。
+
+工作原理
+语义分割器通过以下步骤工作：
+
+首先使用基本分隔符（如换行符、句号等）将文档分割成始片段
+使用向量嵌入模型为每个片段生成语义向量
+计算相邻片段之间的余弦相似度
+根据相似度阈值决定是否在两个片段之间进行分割
+对小于最小大小的片段进行合并
+使用方式
+组件初始化
+语义分割器通过 NewSplitter 函数进行初始化，主要配置参数如下：
+
+splitter, err := semantic.NewSplitter(ctx, &semantic.Config{
+    Embedding:    embedder,        // 必需：用于生成文本向量的嵌入器
+    BufferSize:   2,              // 可选：上下文缓冲区大小
+    MinChunkSize: 100,            // 可选：最小片段大小
+    Separators:   []string{"\n", ".", "?", "!"}, // 可选：分隔符列表
+    Percentile:   0.9,            // 可选：分割阈值百分位数
+    LenFunc:      nil,            // 可选：自定义长度计算函数
+})
+配置参数说明：
+
+Embedding：必需参数，用于生成文本向量的嵌入器实例
+BufferSize：上下文缓冲区大小，用于在计算语义相似度时包含更多上下文信息
+MinChunkSize：最小片段大小，小于此大小的片段会被合并
+Separators：用于初始分割的分隔符列表，按顺序使用
+Percentile：分割阈值的百分位数，范围 0-1，越大分割越少
+LenFunc：自定义文本长度计算函数，默认使用 len()
+完整使用示例
+package main
+
+import (
+    "context"
+    
+    "github.com/cloudwego/eino-ext/components/document/transformer/splitter/semantic"
+    "github.com/cloudwego/eino/components/embedding"
+    "github.com/cloudwego/eino/schema"
+)
+
+func main() {
+    ctx := context.Background()
+    
+    // 初始化嵌入器（示例使用）
+    embedder := &embedding.SomeEmbeddingImpl{} // eg: openai embedding
+    
+    // 初始化分割器
+    splitter, err := semantic.NewSplitter(ctx, &semantic.Config{
+        Embedding:    embedder,
+        BufferSize:   2,
+        MinChunkSize: 100,
+        Separators:   []string{"\n", ".", "?", "!"},
+        Percentile:   0.9,
+    })
+    if err != nil {
+        panic(err)
+    }
+    
+    // 准备要分割的文档
+    docs := []*schema.Document{
+        {
+            ID: "doc1",
+            Content: `这是第一段内容，包含了一些重要信息。
+            这是第二段内容，与第一段语义相关。
+            这是第三段内容，主题已经改变。
+            这是第四段内容，继续讨论新主题。`,
+        },
+    }
+    
+    // 执行分割
+    results, err := splitter.Transform(ctx, docs)
+    if err != nil {
+        panic(err)
+    }
+    
+    // 处理分割结果
+    for i, doc := range results {
+        println("片段", i+1, ":", doc.Content)
+    }
+}
+高级用法
+自定义长度计算：
+
+splitter, err := semantic.NewSplitter(ctx, &semantic.Config{
+    Embedding: embedder,
+    LenFunc: func(s string) int {
+        // 使用 unicode 字符数而不是字节数
+        return len([]rune(s))
+    },
+})
+调整分割粒度：
+
+splitter, err := semantic.NewSplitter(ctx, &semantic.Config{
+    Embedding:  embedder,
+    // 增大百分位数，减少分割点
+    Percentile: 0.95,
+    // 增大最小片段大小，避免过小的片段
+    MinChunkSize: 200,
+})
+优化语义判断：
+
+splitter, err := semantic.NewSplitter(ctx, &semantic.Config{
+    Embedding: embedder,
+    // 增大缓冲区大小，可包含更多上下文
+    BufferSize: 10,
+    // 自定义分隔符优先级
+    Separators: []string{"\n\n", "\n", "。", "！", "？", "，"},
+})
+
+
+
+Embedding - ARK
+基本介绍
+Ark Embedding 是 Eino Embedding 接口的一个实现，用于将文本转换为向量表示，火山引擎 Ark 是一个提供机器学习模型推理服务的平台，其中包含了文本向量化服务。该组件实现了 [🚧]Eino: Embedding 使用说明。
+
+使用方式
+组件初始化
+Ark 向量嵌入器通过 NewEmbedder 函数进行初始化，主要配置参数如下：
+
+import "github.com/cloudwego/eino-ext/components/embedding/ark"
+
+embedder, err := ark.NewEmbedder(ctx, &ark.EmbeddingConfig{
+    // 认证配置（二选一）
+    APIKey: "your-api-key",  // 使用 API Key 认证
+    // 或使用 AK/SK 认证
+    AccessKey: "your-access-key",
+    SecretKey: "your-secret-key",
+    
+    // 服务配置
+    Model:   "ep-xxxxxxx-xxxxx", // Ark 平台的端点 ID
+    BaseURL: "https://ark.cn-beijing.volces.com/api/v3", // 可选，默认为北京区域
+    Region:  "cn-beijing",         // 可选，默认为北京区域
+    
+    // 高级配置
+    Timeout:    &timeout,    // 请求超时时间
+    RetryTimes: &retryTimes, // 重试次数
+    Dimensions: &dimensions, // 输出向量维度
+    User:       &user,      // 用户标识
+})
+生成向量嵌入
+文本向量化通过 EmbedStrings 方法实现：
+
+embeddings, err := embedder.EmbedStrings(ctx, []string{
+    "第一段文本",
+    "第二段文本",
+})
+完整使用示例
+基本使用
+package main
+
+import (
+    "context"
+    "time"
+    
+    "github.com/cloudwego/eino-ext/components/embedding/ark"
+)
+
+func main() {
+    ctx := context.Background()
+    
+    // 初始化嵌入器
+    timeout := 30 * time.Second
+    embedder, err := ark.NewEmbedder(ctx, &ark.EmbeddingConfig{
+        APIKey:  "your-api-key",
+        Model:   "ep-20xxxxxxx-xxxxx",
+        Timeout: &timeout,
+    })
+    if err != nil {
+        panic(err)
+    }
+    
+    // 生成文本向量
+    texts := []string{
+        "这是第一段示例文本",
+        "这是第二段示例文本",
+    }
+    
+    embeddings, err := embedder.EmbedStrings(ctx, texts)
+    if err != nil {
+        panic(err)
+    }
+    
+    // 使用生成的向量
+    for i, embedding := range embeddings {
+        println("文本", i+1, "的向量维度:", len(embedding))
+    }
+}
+
+
+Embedding - OpenAI
+基本介绍
+OpenAI 向量嵌入器是 Eino Embedding 接口的一个实现，用于将文本转换为向量表示。该组件实现了 [🚧]Eino: Embedding 使用说明，主要用于以下场景：
+
+需要将文本转换为高维向量表示
+使用 OpenAI 的 embedding 模型
+使用 Azure OpenAI Service 的 embedding 模型
+使用方式
+组件初始化
+OpenAI 向量嵌入器通过 NewEmbedder 函数进行初始化，主要配置参数如下：
+
+import "github.com/cloudwego/eino-ext/components/embedding/openai"
+
+embedder, err := openai.NewEmbedder(ctx, &openai.EmbeddingConfig{
+    // OpenAI API 配置
+    APIKey:  "your-api-key",
+    Model:   "text-embedding-ada-002",
+    Timeout: 30 * time.Second,
+    
+    // 可选：Azure OpenAI Service 配置
+    ByAzure:    true,
+    BaseURL:    "https://your-resource.openai.azure.com",
+    APIVersion: "2023-05-15",
+
+    EncodingFormat: &format,    // 编码格式
+    Dimensions:     &dimension, // 向量维度
+    User:          &user,      // 用户标识
+})
+生成向量嵌入
+文本向量化通过 EmbedStrings 方法实现：
+
+embeddings, err := embedder.EmbedStrings(ctx, []string{
+    "第一段文本",
+    "第二段文本",
+})
+完整使用示例
+基本使用
+package main
+
+import (
+    "context"
+    "time"
+    
+    "github.com/cloudwego/eino-ext/components/embedding/openai"
+)
+
+func main() {
+    ctx := context.Background()
+    
+    // 初始化嵌入器
+    embedder, err := openai.NewEmbedder(ctx, &openai.EmbeddingConfig{
+        APIKey:  "your-api-key",
+        Model:   "text-embedding-ada-002",
+        Timeout: 30 * time.Second,
+    })
+    if err != nil {
+        panic(err)
+    }
+    
+    // 生成文本向量
+    texts := []string{
+        "这是第一段示例文本",
+        "这是第二段示例文本",
+    }
+    
+    embeddings, err := embedder.EmbedStrings(ctx, texts)
+    if err != nil {
+        panic(err)
+    }
+    
+    // 使用生成的向量
+    for i, embedding := range embeddings {
+        println("文本", i+1, "的向量维度:", len(embedding))
+    }
+}
+
+
+
+
+
+Indexer - volc VikingDB
+基本介绍
+火山引擎 VikingDB 向量索引器是 Indexer 接口的一个实现，用于将文档内容存储到火山引擎的 VikingDB 向量数据库中。该组件实现了 [🚧]Eino: Indexer 使用说明
+
+火山引擎 VikingDB 服务介绍
+火山引擎 VikingDB 是一个高性能的向量数据库服务，提供向量存储、检索和向量化等功能。本组件通过火山引擎 SDK 与服务进行交互，支持两种向量化方式：
+
+使用 VikingDB 内置的向量化方法（Embedding V2）
+使用自定义的向量嵌入模型
+使用方式
+组件初始化
+火山引擎 VikingDB 索引器通过 NewIndexer 函数进行初始化，主要配置参数如下：
+
+import "github.com/cloudwego/eino-ext/components/indexer/volc_vikingdb"
+
+indexer, err := volc_vikingdb.NewIndexer(ctx, &volc_vikingdb.IndexerConfig{
+    Host:              "api-vikingdb.volces.com", // 服务地址
+    Region:            "cn-beijing",            // 区域
+    AK:                "your-ak",               // Access Key
+    SK:                "your-sk",               // Secret Key
+    Scheme:            "https",                 // 协议
+    ConnectionTimeout: 30,                      // 连接超时时间（秒）
+    
+    Collection: "your-collection",              // 集合名称
+    
+    EmbeddingConfig: volc_vikingdb.EmbeddingConfig{
+        UseBuiltin: true,                       // 是否使用内置向量化
+        ModelName:  "text2vec-base",           // 模型名称
+        UseSparse:  true,                       // 是否使用稀疏向量
+        Embedding:  embedder,                   // 自定义向量嵌入器
+    },
+    
+    AddBatchSize: 5,                           // 批量添加大小
+})
+完整使用示例
+使用内置向量化
+package main
+
+import (
+    "context"
+    
+    volcvikingdb "github.com/cloudwego/eino-ext/components/indexer/volc_vikingdb"
+    "github.com/cloudwego/eino/schema"
+)
+
+func main() {
+    ctx := context.Background()
+    
+    // 初始化索引器
+    idx, err := volcvikingdb.NewIndexer(ctx, &volcvikingdb.IndexerConfig{
+        Host:     "api-vikingdb.volces.com",
+        Region:   "cn-beijing",
+        AK:       "your-ak",
+        SK:       "your-sk",
+        Scheme:   "https",
+        
+        Collection: "test-collection",
+        
+        EmbeddingConfig: volcvikingdb.EmbeddingConfig{
+            UseBuiltin: true,
+            ModelName:  "text2vec-base",
+            UseSparse:  true,
+        },
+    })
+    if err != nil {
+        panic(err)
+    }
+    
+    // 准备文档
+    docs := []*schema.Document{
+        {
+            Content: "这是第一个文档的内容",
+        },
+        {
+            Content: "这是第二个文档的内容",
+        },
+    }
+    
+    // 存储文档
+    ids, err := idx.Store(ctx, docs)
+    if err != nil {
+        panic(err)
+    }
+    
+    // 处理返回的ID
+    for i, id := range ids {
+        println("文档", i+1, "的存储ID:", id)
+    }
+}
+使用自定义向量嵌入
+package main
+
+import (
+    "context"
+    
+    volcvikingdb "github.com/cloudwego/eino-ext/components/indexer/volc_vikingdb"
+    "github.com/cloudwego/eino/components/embedding"
+    "github.com/cloudwego/eino/schema"
+)
+
+func main() {
+    ctx := context.Background()
+    
+    // 初始化向量嵌入器（openai 示例）
+    embedder, err := &openai.NewEmbedder(ctx, &openai.EmbeddingConfig{})
+    if err != nil {
+        panic(err)
+    }
+    
+    // 初始化索引器
+    idx, err := volcvikingdb.NewIndexer(ctx, &volcvikingdb.IndexerConfig{
+        Host:     "api-vikingdb.volces.com",
+        Region:   "cn-beijing",
+        AK:       "your-ak",
+        SK:       "your-sk",
+        Scheme:   "https",
+        
+        Collection: "test-collection",
+        
+        EmbeddingConfig: volcvikingdb.EmbeddingConfig{
+            UseBuiltin: false,
+            Embedding:  embedder,
+        },
+    })
+    if err != nil {
+        panic(err)
+    }
+    
+    // 准备文档
+    docs := []*schema.Document{
+        {
+            Content: "Document content one",
+        },
+        {
+            Content: "Document content two",
+        },
+    }
+    
+    // 存储文档
+    ids, err := idx.Store(ctx, docs)
+    if err != nil {
+        panic(err)
+    }
+    
+    // 处理返回的ID
+    for i, id := range ids {
+        println("文档", i+1, "的存储ID:", id)
+    }
+}
+
+
+
+
+
+Retriever - volc VikingDB
+基本介绍
+火山引擎 VikingDB 检索器是 Retriever 接口的一个实现，火山引擎 VikingDB 是火山引擎提供的向量数据库服务，提供了高性能的向量检索能力，本组件通过火山引擎 VikingDB Go SDK 与服务进行交互。该组件实现了 [🚧]Eino: Retriever 使用说明
+
+使用方式
+组件初始化
+火山引擎 VikingDB 检索器通过 NewRetriever 函数进行初始化，主要配置参数如下：
+
+import    "github.com/cloudwego/eino-ext/components/retriever/volc_vikingdb"
+
+retriever, err := volc_vikingdb.NewRetriever(ctx, &volc_vikingdb.RetrieverConfig{
+    // 服务配置
+    Host:              "api-vikingdb.volces.com", // 服务地址
+    Region:            "cn-beijing",            // 区域
+    AK:                "your-ak",               // 访问密钥 ID
+    SK:                "your-sk",               // 访问密钥密码
+    Scheme:            "https",                 // 协议
+    ConnectionTimeout: 30,                      // 连接超时时间（秒）
+    
+    // 数据配置
+    Collection: "collection-name",  // 集合名称
+    Index:      "index-name",      // 索引名称
+    
+    // 向量化配置
+    EmbeddingConfig: volc_vikingdb.EmbeddingConfig{
+        UseBuiltin:   true,        // 是否使用内置向量化
+        ModelName:    "model-name",// 模型名称
+        UseSparse:    true,        // 是否使用稀疏向量
+        DenseWeight:  0.5,         // 稠密向量权重
+        Embedding:    embedder,    // 自定义向量化器
+    },
+    
+    // 检索配置
+    Partition:      "partition",   // 分区名称
+    TopK:           ptrOf(100),   // 返回结果数量
+    ScoreThreshold: ptrOf(0.7),   // 相似度阈值
+    
+    // 过滤配置
+    FilterDSL: map[string]any{    // DSL 过滤条件
+        "term": map[string]any{
+            "field": "value",
+        },
+    },
+})
+检索文档
+文档检索通过 Retrieve 方法实现：
+
+docs, err := retriever.Retrieve(ctx, "查询文本", retriever.WithTopK(5))
+完整使用示例
+基本检索
+package main
+
+import (
+    "context"
+    
+    "github.com/cloudwego/eino-ext/components/retriever/volc_vikingdb"
+)
+
+func main() {
+    ctx := context.Background()
+    
+    // 初始化检索器
+    r, err := volc_vikingdb.NewRetriever(ctx, &volc_vikingdb.RetrieverConfig{
+        Host:       "api-vikingdb.volces.com",
+        Region:     "cn-beijing",
+        AK:         "your-ak",
+        SK:         "your-sk",
+        Collection: "your-collection",
+        Index:      "your-index",
+        EmbeddingConfig: volc_vikingdb.EmbeddingConfig{
+            UseBuiltin: true,
+            ModelName:  "model-name",
+            UseSparse:  true,
+            DenseWeight: 0.5,
+        },
+        TopK: ptrOf(5),
+    })
+    if err != nil {
+        panic(err)
+    }
+    
+    // 执行检索
+    docs, err := r.Retrieve(ctx, "如何使用 VikingDB？")
+    if err != nil {
+        panic(err)
+    }
+    
+    // 处理结果
+    for _, doc := range docs {
+        println("文档ID:", doc.ID)
+        println("内容:", doc.Content)
+        println("相似度:", doc.MetaData["_score"])
+    }
+}
+自定义向量化
+package main
+
+import (
+    "context"
+    
+    "github.com/cloudwego/eino-ext/components/retriever/volc_vikingdb"
+    "github.com/cloudwego/eino/components/embedding"
+)
+
+func main() {
+    ctx := context.Background()
+    
+    // 初始化向量化器 （以 openai 为例）
+    embedder, err := &openai.NewEmbedder(ctx, &openai.EmbeddingConfig{})
+    if err != nil {
+        panic(err)
+    }
+    
+    // 初始化检索器
+    r, err := volc_vikingdb.NewRetriever(ctx, &volc_vikingdb.RetrieverConfig{
+        Host:       "api-vikingdb.volces.com",
+        Region:     "cn-beijing",
+        AK:         "your-ak",
+        SK:         "your-sk",
+        Collection: "your-collection",
+        Index:      "your-index",
+        EmbeddingConfig: volc_vikingdb.EmbeddingConfig{
+            UseBuiltin: false,
+            Embedding:  embedder,
+        },
+    })
+    if err != nil {
+        panic(err)
+    }
+    
+    // 执行检索
+    docs, err := r.Retrieve(ctx, "查询文本")
+    if err != nil {
+        panic(err)
+    }
+    
+    // 处理结果
+    for _, doc := range docs {
+        println(doc.Content)
+    }
+}
+
+
+
+
+
+Tool - Googlesearch
+基本介绍
+Google 搜索工具是 Eino InvokableTool 接口的一个实现，用于通过 Google Custom Search API 进行网络搜索。该组件实现了 Eino: ToolsNode 使用说明。
+
+使用方式
+组件初始化
+Google 搜索工具通过 NewGoogleSearchTool 函数进行初始化，主要配置参数如下：
+
+import "github.com/cloudwego/eino-ext/components/tool/googlesearch"
+
+tool, err := googlesearch.NewTool(ctx, &googlesearch.Config{
+    APIKey:         "your-api-key",        // Google API 密钥
+    SearchEngineID: "your-engine-id",      // 搜索引擎 ID
+    BaseURL:        "custom-base-url",     // 可选：自定义 API 基础 URL, default: https://customsearch.googleapis.com
+    Num:            5,                    // 可选：每页结果数量
+    Lang:           "zh-CN",               // 可选：搜索界面语言
+    ToolName:       "google_search",       // 可选：工具名称
+    ToolDesc:       "google search tool",  // 可选：工具描述
+})
+搜索参数
+搜索请求支持以下参数：
+
+type SearchRequest struct {
+    Query  string `json:"query"`   // 搜索关键词
+    Num    int    `json:"num"`     // 返回结果数量
+    Offset int    `json:"offset"`  // 结果起始位置
+    Lang   string `json:"lang"`    // 搜索语言
+}
+完整使用示例
+package main
+
+import (
+    "context"
+    "encoding/json"
+    "fmt"
+    "log"
+    "os"
+
+    "github.com/cloudwego/eino-ext/components/tool/googlesearch"
+)
+
+func main() {
+    ctx := context.Background()
+
+    googleAPIKey := os.Getenv("GOOGLE_API_KEY")
+    googleSearchEngineID := os.Getenv("GOOGLE_SEARCH_ENGINE_ID")
+
+    if googleAPIKey == "" || googleSearchEngineID == "" {
+        log.Fatal("[GOOGLE_API_KEY] and [GOOGLE_SEARCH_ENGINE_ID] must set")
+    }
+
+    // create tool
+    searchTool, err := googlesearch.NewTool(ctx, &googlesearch.Config{
+        APIKey:         googleAPIKey,
+        SearchEngineID: googleSearchEngineID,
+        Lang:           "zh-CN",
+        Num:            5,
+    })
+    if err != nil {
+        log.Fatal(err)
+    }
+
+    // prepare params
+    req := googlesearch.SearchRequest{
+        Query: "Golang concurrent programming",
+        Num:   3,
+        Lang:  "en",
+    }
+
+    args, err := json.Marshal(req)
+    if err != nil {
+        log.Fatal(err)
+    }
+
+    // do search
+    resp, err := searchTool.InvokableRun(ctx, string(args))
+    if err != nil {
+        log.Fatal(err)
+    }
+
+    var searchResp googlesearch.SearchResult
+    if err := json.Unmarshal([]byte(resp), &searchResp); err != nil {
+        log.Fatal(err)
+    }
+
+    // Print results
+    fmt.Println("Search Results:")
+    fmt.Println("==============")
+    for i, result := range searchResp.Items {
+        fmt.Printf("\n%d. Title: %s\n", i+1, result.Title)
+        fmt.Printf("   Link: %s\n", result.Link)
+        fmt.Printf("   Desc: %s\n", result.Desc)
+    }
+    fmt.Println("")
+    fmt.Println("==============")
+
+    // seems like:
+    // Search Results:
+    // ==============
+    // 1. Title: My Concurrent Programming book is finally PUBLISHED!!! : r/golang
+    //    Link: https://www.reddit.com/r/golang/comments/18b86aa/my_concurrent_programming_book_is_finally/
+    //    Desc: Posted by u/channelselectcase - 398 votes and 46 comments
+    // 2. Title: Concurrency — An Introduction to Programming in Go | Go Resources
+    //    Link: https://www.golang-book.com/books/intro/10
+    //    Desc:
+    // 3. Title: The Comprehensive Guide to Concurrency in Golang | by Brandon ...
+    //    Link: https://bwoff.medium.com/the-comprehensive-guide-to-concurrency-in-golang-aaa99f8bccf6
+    //    Desc: Update (November 20, 2023) — This article has undergone a comprehensive revision for enhanced clarity and conciseness. I’ve streamlined the…
+
+    // ==============
+}
+搜索结果示例
+{
+    "query": "Golang concurrent programming",
+    "items": [
+        {
+            "link": "https://example.com/article1",
+            "title": "Go 并发编程实践",
+            "snippet": "这是一篇关于 Go 语言并发编程的文章...",
+            "desc": "详细介绍了 Go 语言中的 goroutine 和 channel..."
+        },
+        {
+            "link": "https://example.com/article2",
+            "title": "Understanding Concurrency in Go",
+            "snippet": "A comprehensive guide to concurrent programming...",
+            "desc": "Learn about Go's concurrency model and best practices..."
+        }
+    ]
+}
+
+
+
+
+
+Tool - DuckDuckGoSearch
+基本介绍
+DuckDuckGo 搜索工具是 Tool InvokableTool 接口的一个实现，用于通过 DuckDuckGo 搜索引擎进行网络搜索，DuckDuckGo 是一个注重隐私的搜索引擎，不会追踪用户的搜索行为，重点是无需 api key 鉴权即可直接使用。该组件实现了 Eino: ToolsNode 使用说明
+
+使用方式
+组件初始化
+DuckDuckGo 搜索工具通过 NewTool 函数进行初始化，主要配置参数如下：
+
+import "github.com/cloudwego/eino-ext/components/tool/duckduckgo"
+
+tool, err := duckduckgo.NewTool(ctx, &duckduckgo.Config{
+    ToolName:    "duckduckgo_search",     // 工具名称
+    ToolDesc:    "search web for information by duckduckgo", // 工具描述
+    Region:      ddgsearch.RegionWT,      // 搜索地区
+    MaxResults:  10,                      // 每页结果数量
+    SafeSearch:  ddgsearch.SafeSearchOff, // 安全搜索级别
+    TimeRange:   ddgsearch.TimeRangeAll,  // 时间范围
+    DDGConfig:   &ddgsearch.Config{},     // DuckDuckGo 配置
+})
+搜索参数
+搜索请求支持以下参数：
+
+type SearchRequest struct {
+    Query string `json:"query"` // 搜索关键词
+    Page  int    `json:"page"`  // 页码
+}
+完整使用示例
+package main
+
+import (
+    "context"
+    "encoding/json"
+    "fmt"
+    "log"
+    "time"
+
+    "github.com/cloudwego/eino-ext/components/tool/duckduckgo"
+    "github.com/cloudwego/eino-ext/components/tool/duckduckgo/ddgsearch"
+)
+
+func main() {
+    ctx := context.Background()
+
+    // Create configuration
+    config := &duckduckgo.Config{
+        MaxResults: 3, // Limit to return 3 results
+        Region:     ddgsearch.RegionCN,
+        DDGConfig: &ddgsearch.Config{
+            Timeout:    10 * time.Second,
+            Cache:      true,
+            MaxRetries: 5,
+        },
+    }
+
+    // Create search client
+    tool, err := duckduckgo.NewTool(ctx, config)
+    if err != nil {
+        log.Fatalf("NewTool of duckduckgo failed, err=%v", err)
+    }
+
+    // Create search request
+    searchReq := &duckduckgo.SearchRequest{
+        Query: "Golang programming development",
+        Page:  1,
+    }
+
+    jsonReq, err := json.Marshal(searchReq)
+    if err != nil {
+        log.Fatalf("Marshal of search request failed, err=%v", err)
+    }
+
+    // Execute search
+    resp, err := tool.InvokableRun(ctx, string(jsonReq))
+    if err != nil {
+        log.Fatalf("Search of duckduckgo failed, err=%v", err)
+    }
+
+    var searchResp duckduckgo.SearchResponse
+    if err := json.Unmarshal([]byte(resp), &searchResp); err != nil {
+        log.Fatalf("Unmarshal of search response failed, err=%v", err)
+    }
+
+    // Print results
+    fmt.Println("Search Results:")
+    fmt.Println("==============")
+    for i, result := range searchResp.Results {
+        fmt.Printf("\n%d. Title: %s\n", i+1, result.Title)
+        fmt.Printf("   Link: %s\n", result.Link)
+        fmt.Printf("   Description: %s\n", result.Description)
+    }
+    fmt.Println("")
+    fmt.Println("==============")
+}
+搜索结果示例
+{
+    "results": [
+        {
+            "title": "Go 并发编程实践",
+            "description": "这是一篇关于 Go 语言并发编程的文章...",
+            "link": "https://example.com/article1"
+        },
+        {
+            "title": "Understanding Concurrency in Go",
+            "description": "A comprehensive guide to concurrent programming...",
+            "link": "https://example.com/article2"
+        }
+    ]
+}
+
+
+
+
+
+
+Eino: Chain/Graph 编排介绍
+本文所有代码样例都在：https://github.com/cloudwego/eino-examples/tree/main/compose
+
+Graph 编排
+Graph
+package main
+
+import (
+    "context"
+    "fmt"
+    "io"
+
+    "github.com/cloudwego/eino/components/model"
+    "github.com/cloudwego/eino/components/prompt"
+    "github.com/cloudwego/eino/compose"
+    "github.com/cloudwego/eino/schema"
+)
+
+const (
+    nodeOfModel  = "model"
+    nodeOfPrompt = "prompt"
+)
+
+func main() {
+    ctx := context.Background()
+    g := compose.NewGraph[map[string]any, *schema.Message]()
+
+    pt := prompt.FromMessages(
+       schema.FString,
+       schema.UserMessage("what's the weather in {location}?"),
+    )
+
+    _ = g.AddChatTemplateNode(nodeOfPrompt, pt)
+    _ = g.AddChatModelNode(nodeOfModel, &mockChatModel{}, compose.WithNodeName("ChatModel"))
+    _ = g.AddEdge(compose.START, nodeOfPrompt)
+    _ = g.AddEdge(nodeOfPrompt, nodeOfModel)
+    _ = g.AddEdge(nodeOfModel, compose.END)
+
+    r, err := g.Compile(ctx, compose.WithMaxRunSteps(10))
+    if err != nil {
+       panic(err)
+    }
+
+    in := map[string]any{"location": "beijing"}
+    ret, err := r.Invoke(ctx, in)
+    fmt.Println("invoke result: ", ret)
+
+    // stream
+    s, err := r.Stream(ctx, in)
+    if err != nil {
+       panic(err)
+    }
+
+    defer s.Close()
+    for {
+       chunk, err := s.Recv()
+       if err != nil {
+          if err == io.EOF {
+             break
+          }
+          panic(err)
+       }
+
+       fmt.Println("stream chunk: ", chunk)
+    }
+}
+
+type mockChatModel struct{}
+
+func (m *mockChatModel) Generate(ctx context.Context, input []*schema.Message, opts ...model.Option) (*schema.Message, error) {
+    return schema.AssistantMessage("the weather is good", nil), nil
+}
+
+func (m *mockChatModel) Stream(ctx context.Context, input []*schema.Message, opts ...model.Option) (*schema.StreamReader[*schema.Message], error) {
+    sr, sw := schema.Pipe[*schema.Message](0)
+    go func() {
+       defer sw.Close()
+       sw.Send(schema.AssistantMessage("the weather is", nil), nil)
+       sw.Send(schema.AssistantMessage("good", nil), nil)
+    }()
+    return sr, nil
+}
+
+func (m *mockChatModel) BindTools(tools []*schema.ToolInfo) error {
+    panic("implement me")
+}
+ToolCallAgent
+go get github.com/cloudwego/eino-ext/components/model/openai@latest
+go get github.com/cloudwego/eino@latest
+package main
+
+import (
+    "context"
+    "os"
+
+    "github.com/cloudwego/eino-ext/components/model/openai"
+    "github.com/cloudwego/eino/callbacks"
+    "github.com/cloudwego/eino/components/prompt"
+    "github.com/cloudwego/eino/components/tool"
+    "github.com/cloudwego/eino/components/tool/utils"
+    "github.com/cloudwego/eino/compose"
+    "github.com/cloudwego/eino/schema"
+
+    "github.com/cloudwego/eino-examples/internal/gptr"
+    "github.com/cloudwego/eino-examples/internal/logs"
+)
+
+func main() {
+
+    openAIBaseURL := os.Getenv("OPENAI_BASE_URL")
+    openAIAPIKey := os.Getenv("OPENAI_API_KEY")
+    modelName := os.Getenv("MODEL_NAME")
+
+    ctx := context.Background()
+
+    callbacks.AppendGlobalHandlers(&loggerCallbacks{})
+
+    // 1. create an instance of ChatTemplate as 1st Graph Node
+    systemTpl := `你是一名房产经纪人，结合用户的薪酬和工作，使用 user_info API，为其提供相关的房产信息。邮箱是必须的`
+    chatTpl := prompt.FromMessages(schema.FString,
+       schema.SystemMessage(systemTpl),
+       schema.MessagesPlaceholder("message_histories", true),
+       schema.UserMessage("{user_query}"),
+    )
+
+    modelConf := &openai.ChatModelConfig{
+       BaseURL:     openAIBaseURL,
+       APIKey:      openAIAPIKey,
+       ByAzure:     true,
+       Model:       modelName,
+       Temperature: gptr.Of(float32(0.7)),
+       APIVersion:  "2024-06-01",
+    }
+
+    // 2. create an instance of ChatModel as 2nd Graph Node
+    chatModel, err := openai.NewChatModel(ctx, modelConf)
+    if err != nil {
+       logs.Errorf("NewChatModel failed, err=%v", err)
+       return
+    }
+
+    // 3. create an instance of tool.InvokableTool for Intent recognition and execution
+    userInfoTool := utils.NewTool(
+       &schema.ToolInfo{
+          Name: "user_info",
+          Desc: "根据用户的姓名和邮箱，查询用户的公司、职位、薪酬信息",
+          ParamsOneOf: schema.NewParamsOneOfByParams(map[string]*schema.ParameterInfo{
+             "name": {
+                Type: "string",
+                Desc: "用户的姓名",
+             },
+             "email": {
+                Type: "string",
+                Desc: "用户的邮箱",
+             },
+          }),
+       },
+       func(ctx context.Context, input *userInfoRequest) (output *userInfoResponse, err error) {
+          return &userInfoResponse{
+             Name:     input.Name,
+             Email:    input.Email,
+             Company:  "Bytedance",
+             Position: "CEO",
+             Salary:   "9999",
+          }, nil
+       })
+
+    info, err := userInfoTool.Info(ctx)
+    if err != nil {
+       logs.Errorf("Get ToolInfo failed, err=%v", err)
+       return
+    }
+
+    // 4. bind ToolInfo to ChatModel. ToolInfo will remain in effect until the next BindTools.
+    err = chatModel.BindForcedTools([]*schema.ToolInfo{info})
+    if err != nil {
+       logs.Errorf("BindForcedTools failed, err=%v", err)
+       return
+    }
+
+    // 5. create an instance of ToolsNode as 3rd Graph Node
+    toolsNode, err := compose.NewToolNode(ctx, &compose.ToolsNodeConfig{
+       Tools: []tool.BaseTool{userInfoTool},
+    })
+    if err != nil {
+       logs.Errorf("NewToolNode failed, err=%v", err)
+       return
+    }
+
+    const (
+       nodeKeyOfTemplate  = "template"
+       nodeKeyOfChatModel = "chat_model"
+       nodeKeyOfTools     = "tools"
+    )
+
+    // 6. create an instance of Graph
+    // input type is 1st Graph Node's input type, that is ChatTemplate's input type: map[string]any
+    // output type is last Graph Node's output type, that is ToolsNode's output type: []*schema.Message
+    g := compose.NewGraph[map[string]any, []*schema.Message]()
+
+    // 7. add ChatTemplate into graph
+    _ = g.AddChatTemplateNode(nodeKeyOfTemplate, chatTpl)
+
+    // 8. add ChatModel into graph
+    _ = g.AddChatModelNode(nodeKeyOfChatModel, chatModel)
+
+    // 9. add ToolsNode into graph
+    _ = g.AddToolsNode(nodeKeyOfTools, toolsNode)
+
+    // 10. add connection between nodes
+    _ = g.AddEdge(compose.START, nodeKeyOfTemplate)
+
+    _ = g.AddEdge(nodeKeyOfTemplate, nodeKeyOfChatModel)
+
+    _ = g.AddEdge(nodeKeyOfChatModel, nodeKeyOfTools)
+
+    _ = g.AddEdge(nodeKeyOfTools, compose.END)
+
+    // 9. compile Graph[I, O] to Runnable[I, O]
+    r, err := g.Compile(ctx)
+    if err != nil {
+       logs.Errorf("Compile failed, err=%v", err)
+       return
+    }
+
+    out, err := r.Invoke(ctx, map[string]any{
+       "message_histories": []*schema.Message{},
+       "user_query":        "我叫 zhangsan, 邮箱是 zhangsan@bytedance.com, 帮我推荐一处房产",
+    })
+    if err != nil {
+       logs.Errorf("Invoke failed, err=%v", err)
+       return
+    }
+    logs.Infof("Generation: %v Messages", len(out))
+    for _, msg := range out {
+       logs.Infof("    %v", msg)
+    }
+}
+
+type userInfoRequest struct {
+    Name  string `json:"name"`
+    Email string `json:"email"`
+}
+
+type userInfoResponse struct {
+    Name     string `json:"name"`
+    Email    string `json:"email"`
+    Company  string `json:"company"`
+    Position string `json:"position"`
+    Salary   string `json:"salary"`
+}
+
+type loggerCallbacks struct{}
+
+func (l *loggerCallbacks) OnStart(ctx context.Context, info *callbacks.RunInfo, input callbacks.CallbackInput) context.Context {
+    logs.Infof("name: %v, type: %v, component: %v, input: %v", info.Name, info.Type, info.Component, input)
+    return ctx
+}
+
+func (l *loggerCallbacks) OnEnd(ctx context.Context, info *callbacks.RunInfo, output callbacks.CallbackOutput) context.Context {
+    logs.Infof("name: %v, type: %v, component: %v, output: %v", info.Name, info.Type, info.Component, output)
+    return ctx
+}
+
+func (l *loggerCallbacks) OnError(ctx context.Context, info *callbacks.RunInfo, err error) context.Context {
+    logs.Infof("name: %v, type: %v, component: %v, error: %v", info.Name, info.Type, info.Component, err)
+    return ctx
+}
+
+func (l *loggerCallbacks) OnStartWithStreamInput(ctx context.Context, info *callbacks.RunInfo, input *schema.StreamReader[callbacks.CallbackInput]) context.Context {
+    return ctx
+}
+
+func (l *loggerCallbacks) OnEndWithStreamOutput(ctx context.Context, info *callbacks.RunInfo, output *schema.StreamReader[callbacks.CallbackOutput]) context.Context {
+    return ctx
+}
+Graph with state
+Graph 可以有 graph 自身的“全局”状态，在创建 Graph 时传入 WithGenLocalState Option 开启此功能：
+
+// compose/generic_graph.go
+
+// type GenLocalState[S any] func(ctx context.Context) (state S)
+
+func WithGenLocalState[S any](gls GenLocalState[S]) NewGraphOption {
+    // --snip--
+}
+Add node 时添加 Pre/Post Handler 来处理 State：
+
+// compose/graph_add_node_options.go
+
+// type StatePreHandler[I, S any] func(ctx context.Context, in I, state S) (I, error)
+// type StatePostHandler[O, S any] func(ctx context.Context, out O, state S) (O, error)
+
+func WithStatePreHandler[I, S any](pre StatePreHandler[I, S]) GraphAddNodeOpt {
+    // --snip--
+}
+
+func WithStatePostHandler[O, S any](post StatePostHandler[O, S]) GraphAddNodeOpt {
+    // --snip--
+}
+在 Node 内部，用 ProcessState，传入一个读写 State 的 函数：
+
+// flow/agent/react/react.go
+
+var msg *schema.Message
+err = compose.ProcessState[*state](ctx, func(_ context.Context, state *state) error {
+    for i := range msgs {
+       if msgs[i] != nil && msgs[i].ToolCallID == state.ReturnDirectlyToolCallID {
+          msg = msgs[i]
+          return nil
+       }
+    }
+    return nil
+})
+完整使用例子：
+
+package main
+
+import (
+    "context"
+    "errors"
+    "io"
+    "runtime/debug"
+    "strings"
+    "unicode/utf8"
+
+    "github.com/cloudwego/eino/compose"
+    "github.com/cloudwego/eino/schema"
+    "github.com/cloudwego/eino/utils/safe"
+
+    "github.com/cloudwego/eino-examples/internal/logs"
+)
+
+func main() {
+    ctx := context.Background()
+
+    const (
+       nodeOfL1 = "invokable"
+       nodeOfL2 = "streamable"
+       nodeOfL3 = "transformable"
+    )
+
+    type testState struct {
+       ms []string
+    }
+
+    gen := func(ctx context.Context) *testState {
+       return &testState{}
+    }
+
+    sg := compose.NewGraph[string, string](compose.WithGenLocalState(gen))
+
+    l1 := compose.InvokableLambda(func(ctx context.Context, in string) (out string, err error) {
+       return "InvokableLambda: " + in, nil
+    })
+
+    l1StateToInput := func(ctx context.Context, in string, state *testState) (string, error) {
+       state.ms = append(state.ms, in)
+       return in, nil
+    }
+
+    l1StateToOutput := func(ctx context.Context, out string, state *testState) (string, error) {
+       state.ms = append(state.ms, out)
+       return out, nil
+    }
+
+    _ = sg.AddLambdaNode(nodeOfL1, l1,
+       compose.WithStatePreHandler(l1StateToInput),   compose.WithStatePostHandler(l1StateToOutput))
+
+    l2 := compose.StreamableLambda(func(ctx context.Context, input string) (output *schema.StreamReader[string], err error) {
+       outStr := "StreamableLambda: " + input
+
+       sr, sw := schema.Pipe[string](utf8.RuneCountInString(outStr))
+
+       // nolint: byted_goroutine_recover
+       go func() {
+          for _, field := range strings.Fields(outStr) {
+             sw.Send(field+" ", nil)
+          }
+          sw.Close()
+       }()
+
+       return sr, nil
+    })
+
+    l2StateToOutput := func(ctx context.Context, out string, state *testState) (string, error) {
+       state.ms = append(state.ms, out)
+       return out, nil
+    }
+
+    _ = sg.AddLambdaNode(nodeOfL2, l2, compose.WithStatePostHandler(l2StateToOutput))
+
+    l3 := compose.TransformableLambda(func(ctx context.Context, input *schema.StreamReader[string]) (
+       output *schema.StreamReader[string], err error) {
+
+       prefix := "TransformableLambda: "
+       sr, sw := schema.Pipe[string](20)
+
+       go func() {
+
+          defer func() {
+             panicErr := recover()
+             if panicErr != nil {
+                err := safe.NewPanicErr(panicErr, debug.Stack())
+                logs.Errorf("panic occurs: %v\n", err)
+             }
+
+          }()
+
+          for _, field := range strings.Fields(prefix) {
+             sw.Send(field+" ", nil)
+          }
+
+          for {
+             chunk, err := input.Recv()
+             if err != nil {
+                if err == io.EOF {
+                   break
+                }
+                // TODO: how to trace this kind of error in the goroutine of processing sw
+                sw.Send(chunk, err)
+                break
+             }
+
+             sw.Send(chunk, nil)
+
+          }
+          sw.Close()
+       }()
+
+       return sr, nil
+    })
+
+    l3StateToOutput := func(ctx context.Context, out string, state *testState) (string, error) {
+       state.ms = append(state.ms, out)
+       logs.Infof("state result: ")
+       for idx, m := range state.ms {
+          logs.Infof("    %vth: %v", idx, m)
+       }
+       return out, nil
+    }
+
+    _ = sg.AddLambdaNode(nodeOfL3, l3, compose.WithStatePostHandler(l3StateToOutput))
+
+    _ = sg.AddEdge(compose.START, nodeOfL1)
+
+    _ = sg.AddEdge(nodeOfL1, nodeOfL2)
+
+    _ = sg.AddEdge(nodeOfL2, nodeOfL3)
+
+    _ = sg.AddEdge(nodeOfL3, compose.END)
+
+    run, err := sg.Compile(ctx)
+    if err != nil {
+       logs.Errorf("sg.Compile failed, err=%v", err)
+       return
+    }
+
+    out, err := run.Invoke(ctx, "how are you")
+    if err != nil {
+       logs.Errorf("run.Invoke failed, err=%v", err)
+       return
+    }
+    logs.Infof("invoke result: %v", out)
+
+    stream, err := run.Stream(ctx, "how are you")
+    if err != nil {
+       logs.Errorf("run.Stream failed, err=%v", err)
+       return
+    }
+
+    for {
+
+       chunk, err := stream.Recv()
+       if err != nil {
+          if errors.Is(err, io.EOF) {
+             break
+          }
+          logs.Infof("stream.Recv() failed, err=%v", err)
+          break
+       }
+
+       logs.Tokenf("%v", chunk)
+    }
+    stream.Close()
+
+    sr, sw := schema.Pipe[string](1)
+    sw.Send("how are you", nil)
+    sw.Close()
+
+    stream, err = run.Transform(ctx, sr)
+    if err != nil {
+       logs.Infof("run.Transform failed, err=%v", err)
+       return
+    }
+
+    for {
+
+       chunk, err := stream.Recv()
+       if err != nil {
+          if errors.Is(err, io.EOF) {
+             break
+          }
+          logs.Infof("stream.Recv() failed, err=%v", err)
+          break
+       }
+
+       logs.Infof("%v", chunk)
+    }
+    stream.Close()
+}
+Chain
+Chain 可以视为是 Graph 的简化封装
+
+package main
+
+import (
+    "context"
+    "fmt"
+    "log"
+    "math/rand"
+    "os"
+
+    "github.com/cloudwego/eino-ext/components/model/openai"
+    "github.com/cloudwego/eino/components/prompt"
+    "github.com/cloudwego/eino/compose"
+    "github.com/cloudwego/eino/schema"
+
+    "github.com/cloudwego/eino-examples/internal/gptr"
+    "github.com/cloudwego/eino-examples/internal/logs"
+)
+
+func main() {
+    openAPIBaseURL := os.Getenv("OPENAI_BASE_URL")
+    openAPIAK := os.Getenv("OPENAI_API_KEY")
+    modelName := os.Getenv("MODEL_NAME")
+
+    ctx := context.Background()
+    // build branch func
+    const randLimit = 2
+    branchCond := func(ctx context.Context, input map[string]any) (string, error) { // nolint: byted_all_nil_return
+       if rand.Intn(randLimit) == 1 {
+          return "b1", nil
+       }
+
+       return "b2", nil
+    }
+
+    b1 := compose.InvokableLambda(func(ctx context.Context, kvs map[string]any) (map[string]any, error) {
+       logs.Infof("hello in branch lambda 01")
+       if kvs == nil {
+          return nil, fmt.Errorf("nil map")
+       }
+
+       kvs["role"] = "cat"
+       return kvs, nil
+    })
+
+    b2 := compose.InvokableLambda(func(ctx context.Context, kvs map[string]any) (map[string]any, error) {
+       logs.Infof("hello in branch lambda 02")
+       if kvs == nil {
+          return nil, fmt.Errorf("nil map")
+       }
+
+       kvs["role"] = "dog"
+       return kvs, nil
+    })
+
+    // build parallel node
+    parallel := compose.NewParallel()
+    parallel.
+       AddLambda("role", compose.InvokableLambda(func(ctx context.Context, kvs map[string]any) (string, error) {
+          // may be change role to others by input kvs, for example (dentist/doctor...)
+          role, ok := kvs["role"].(string)
+          if !ok || role == "" {
+             role = "bird"
+          }
+
+          return role, nil
+       })).
+       AddLambda("input", compose.InvokableLambda(func(ctx context.Context, kvs map[string]any) (string, error) {
+          return "你的叫声是怎样的？", nil
+       }))
+
+    modelConf := &openai.ChatModelConfig{
+       BaseURL:     openAPIBaseURL,
+       APIKey:      openAPIAK,
+       ByAzure:     true,
+       Model:       modelName,
+       Temperature: gptr.Of(float32(0.7)),
+       APIVersion:  "2024-06-01",
+    }
+
+    // create chat model node
+    cm, err := openai.NewChatModel(context.Background(), modelConf)
+    if err != nil {
+       log.Panic(err)
+       return
+    }
+
+    rolePlayerChain := compose.NewChain[map[string]any, *schema.Message]()
+    rolePlayerChain.
+       AppendChatTemplate(prompt.FromMessages(schema.FString, schema.SystemMessage(`You are a {role}.`), schema.UserMessage(`{input}`))).
+       AppendChatModel(cm)
+
+    // =========== build chain ===========
+    chain := compose.NewChain[map[string]any, string]()
+    chain.
+       AppendLambda(compose.InvokableLambda(func(ctx context.Context, kvs map[string]any) (map[string]any, error) {
+          // do some logic to prepare kv as input val for next node
+          // just pass through
+          logs.Infof("in view lambda: %v", kvs)
+          return kvs, nil
+       })).
+       AppendBranch(compose.NewChainBranch(branchCond).AddLambda("b1", b1).AddLambda("b2", b2)). // nolint: byted_use_receiver_without_nilcheck
+       AppendPassthrough().
+       AppendParallel(parallel).
+       AppendGraph(rolePlayerChain).
+       AppendLambda(compose.InvokableLambda(func(ctx context.Context, m *schema.Message) (string, error) {
+          // do some logic to check the output or something
+          logs.Infof("in view of messages: %v", m.Content)
+          return m.Content, nil
+       }))
+
+    // compile
+    r, err := chain.Compile(ctx)
+    if err != nil {
+       log.Panic(err)
+       return
+    }
+
+    output, err := r.Invoke(context.Background(), map[string]any{})
+    if err != nil {
+       log.Panic(err)
+       return
+    }
+
+    logs.Infof("output is : %v", output)
+}
+
+
+Eino: 编排的设计理念
+大模型应用编排方案中，最火的就是 langchain 以及 langgraph，其官方提供了 python 和 ts 的 sdk，这两门语言以其灵活性著称，灵活性给 sdk 的开发带来了极大的便利，但同时，也给 sdk 的使用者带来了极大的困扰和心智负担。
+
+golang 作为一门 极其简单 的编程语言，确定的 静态类型 是让其变得简单的重要原因之一，而 eino，则保持了这一重要特性: 确定的类型 + Compile 时类型检查。
+
+以上下游 类型对齐 为基本准则
+eino 的最基础编排方式为 graph，以及简化的封装 chain。不论是哪种编排方式，其本质都是 逻辑节点 + 上下游关系 。在编排的产物运行时，都是从一个逻辑节点运行，然后下一步运行和这个节点相连的下一个节点。
+
+这之间蕴含了一个基本假设：前一个运行节点的输出值，可以作为下一个节点的输入值。
+
+在 golang 中，要实现这个假设，有两个基本方案：
+
+把不同节点的输入输出都变成一种更泛化的类型，例如 any 、map[string]any 等。
+采用泛化成 any 的方案，但对应的代价是: 开发者在写代码时，需要显式转换成具体类型才能使用。这会极大增加开发者的心智负担，因此最终放弃此方案。
+langchain 的方案可以看做是全程传递 map[string]any，各个逻辑节点根据自己的需要，用对应的 key 去取对应的 value。在 langchaingo 的实现中，即是按照这种方式实现，但同样，golang 中的 any 要被使用依然要使用 类型断言 才可使用。这种方案在开发者使用时依然有很大的心智负担。
+每一个节点的输入输出类型保持开发者的预期，在 Compile 阶段保证上下游的类型是一致的。
+方案 2 即是 eino 最终选定的方案。这种方案是编排时最容易被理解的，整个过程就像是 搭积木 一样，每一个积木突出的部分和凹陷的部分有各自的规格，仅有规格匹配了才能成为上下游关系。
+
+就如下图：
+
+
+
+对于一个编排而言，只有下游能识别和处理上游的输出，这个编排才能正常运行。 这个基本假设在 eino 中被清晰地表达了出来，让开发者在用 eino 做编排时，能够有十足的信心清楚编排的逻辑是如何运行和流转的，而不是从一系列的 any 中去猜测传过来的值是否正确。
+
+graph 中的类型对齐
+edge
+在 graph 中，一个节点的输出将顺着 边(edge) 流向下一节点，因此，用边连接的节点间必须要类型对齐。
+
+如下图：
+
+这是一个模拟 ① 直接和大模型对话 ② 使用 RAG 模式 的场景，最后结果可用于对比两种模式的效果
+
+
+
+图中绿色的部分，就是普通的 Edge 连接，其要求上游的输出必须能 assign 给下游，可以接收的类型有：
+
+① 上下游类型相同: 例如上游输出 *schema.Message 下游输入也是 *schema.Message
+
+② 下游接收接口，上游实现了该接口: 例如上游结构体实现了 Format() 接口，下游接收的是一个 interface{ Format() }。特殊情况是下游是 any（空接口），上游一定实现了 any，因此一定可以连接。
+
+③ 上游是 interface，下游是具体类型: 当下游具体类型 implements 上游的 interface 类型时，有可能可以，有可能不行，在 compile 时无法确定，只有在运行时，等上游的具体类型确定了，才能最终确定。时，详细描述可见: Eino: 编排的设计理念
+
+图中黄色的部分，则是 eino 提供的另一个类型转换的机制，即: 若下游接收的类型是 map[string]any，但是上游输出的类型并不是 map[string]any，可以使用 graph.AddXXXNode(node_key, xxx, compose.WithOutputKey("outkey") 的方式将上游输出的类型转化为 map[string]any，其中 map 的 key 是 option 中指定的 OutputKey。 一般在多条边汇聚到某一个节点时，这种机制使用起来较为方便。
+
+同理，若上游是 map[string]any ，但是下游输入的类型并不是 map[string]any，则可以使用 graph.AddXXXNode(node_key, xxx, compose.WithInputKey("inkey") 来获取上游输出的其中一个 key 的 value，作为下游的输入。
+
+branch
+如果一个节点后面连接了多个 edge，则每条 edge 的下游节点都会运行一次。branch 则是另一种机制： 一个 branch 后接了 n 个节点，但仅会运行 condition 返回的那个 node key 对应的节点。同一个 branch 后的节点，必须要类型对齐。
+
+如下图:
+
+这是一个模拟 react agent 的运行逻辑
+
+
+
+可以看到，一个 branch 本身拥有一个 condition, 这个 function 的输入必须和上游类型对齐。同时，一个 branch 后所接的各个节点，也必须和 condition 一样，要能接收上游的输出。
+
+chain 中的类型对齐
+chain
+从抽象角度看，chain 就是一个 链条，如下所示：
+
+
+
+逻辑节点的类型可以分为 3 类：
+
+可编排组件 (例如 chat model、 chat template、 retriever、 lambda、graph 等等)
+branch 节点
+parallel 节点
+可以看到，在 chain 的视角下，不论是简单的节点(eg： chat model) 还是复杂的节点 (eg: graph、branch、parallel)，都是一样的，在运行过程中，一步的执行就是一个节点的运行。
+
+也因此，chain 的上下游节点间，类型必须是对齐的，如下：
+
+func TestChain() {
+    chain := compose.NewChain[map[string]interface,string]()
+    
+    nodeTemplate := &fakeChatTemplate{} // input: map[string]any, output: []*schema.Message
+    
+    nodeHistoryLambda := &fakeLambda{} // input: []*schema.Message, output: []*schema.Message
+    
+    nodeChatModel := &fakeChatModel{} // input: []*schema.Message, output: *schema.Message
+    
+    nodeConvertResLambda := &fakeLambda{} // input: *schema.Message, output: string
+    
+    chain.
+        AppendChatTemplate(nodeTemplate).
+        AppendLambda(nodeHistoryLambda).
+        AppendChatModel(nodeChatModel).
+        AppendLambda(nodeConvertResLambda)
+}
+上面的逻辑用图来表示如下：
+
+
+
+若上下游的类型没有对齐，chain 会在 chain.Compile() 时返回错误。而 graph 会在 graph.AddXXXNode() 时就报错。
+
+parallel
+parallel 在 chain 中是一类特殊的节点，从 chain 的角度看 parallel 和其他的节点没啥区别。在 parallel 内部，其基本拓扑结构如下：
+
+
+
+graph 中的多 edge 形成的结构其中一种就是这个，这里的基本假设是： 一个 parallel 的每一条边上有且仅有一个节点。当然，这一个节点也可以是 graph。但注意，目前框架没有直接提供在 parallel 中嵌套 branch 或 parallel 的能力。
+
+在 parallel 中的每个节点，由于其上游节点是同一个，因此他们都要和上游节点的输出类型对齐，比如图中上游节点输出了 *schema.Message ，则每个节点都要能接收这个类型。接收的方式和 graph 中的一致，通常可以用 相同类型 、接口定义 、any、input key option 的方式。
+
+parallel 节点的输出一定是一个 map[string]any，其中的 key 则是在 parallel.AddXXX(output_key, xxx, opts...) 时指定的 output_key，value 是节点内部的实际输出。
+
+一个 parallel 的构建例子如下：
+
+func TestParallel() {
+    chain := compose.NewChain[map[string]any, map[string]*schema.Message]()
+    
+    parallel := compose.NewParallel()
+    model01 := &fakeChatModel{} // input: []*schema.Message, output: *schema.Message
+    model02 := &fakeChatModel{} // input: []*schema.Message, output: *schema.Message
+    model03 := &fakeChatModel{} // input: []*schema.Message, output: *schema.Message
+    
+    parallel.
+        AddChatModel("outkey_01", model01).
+        AddChatModel("outkey_02", model02).
+        AddChatModel("outkey_03", model03)
+    
+    lambdaNode := &fakeLambdaNode{} // input: map[string]any, output: map[string]*schema.Message
+    
+    chain.
+        AppendParallel(parallel).
+        AppendLambda(lambdaNode)
+}
+一个 parallel 在 chain 中的视角如下：
+
+图中是模拟同一个提问，由不同的大模型去回答，结果可用于对比效果
+
+
+
+需要注意的是，这个结构只是逻辑上的视角，由于 chain 本身也是用 graph 实现的，parallel 在底层 graph 中会平铺到图中。
+
+branch
+chain 的 branch 和 graph 中的 branch 类似，branch 中的所有节点都要和上游节点的类型对齐，此处不再赘述。chain branch 的特殊之处是，branch 的所有可能的分支节点，都会连到 chain 中的同一个节点，或者都会连到 END。
+
+Workflow 中的类型对齐
+Workflow 的类型对齐的维度，由整体的 Input & Output 改成了字段级别。具体可分为：
+
+上游输出的整体，类型对齐到下游的某个具体字段。
+上游输出的某个具体字段，类型对齐到下游的整体。
+上游输出的某个具体字段，类型对齐到下游输入的某个具体字段。
+原理和规则与整体的类型对齐相同。
+
+StateHandler 的类型对齐
+StatePreHandler: 输入类型需要对齐对应节点的非流式输入类型。
+
+// input 类型为 []*schema.Message，对齐 ChatModel 的非流式输入类型
+preHandler := func(ctx context.Context, input []*schema.Message, state *state) ([]*schema.Message, error) {
+    // your handler logic
+}
+
+AddChatModelNode("xxx", model, WithStatePreHandler(preHandler))
+StatePostHandler: 输入类型需要对齐对应节点的非流式输出类型。
+
+// input 类型为 *schema.Message，对齐 ChatModel 的非流式输出类型
+postHandler := func(ctx context.Context, input *schema.Message, state *state) (*schema.Message, error) {
+    // your handler logic
+}
+
+AddChatModelNode("xxx", model, WithStatePostHandler(postHandler))
+StreamStatePreHandler: 输入类型需要对齐对应节点的流式输入类型。
+
+// input 类型为 *schema.StreamReader[[]*schema.Message]，对齐 ChatModel 的流式输入类型
+preHandler := func(ctx context.Context, input *schema.StreamReader[[]*schema.Message], state *state) (*schema.StreamReader[[]*schema.Message], error) {
+    // your handler logic
+}
+
+AddChatModelNode("xxx", model, WithStreamStatePreHandler(preHandler))
+StreamStatePostHandler: 输入类型需要对齐对应节点的流式输出类型。
+
+// input 类型为 *schema.StreamReader[*schema.Message]，对齐 ChatModel 的流式输出类型
+postHandler := func(ctx context.Context, input *schema.StreamReader[*schema.Message], state *state) (*schema.StreamReader[*schema.Message], error) {
+    // your handler logic
+}
+
+AddChatModelNode("xxx", model, WithStreamStatePostHandler(postHandler))
+invoke 和 stream 下的类型对齐方式
+在 Eino 中，编排的结果是 graph 或 chain，若要运行，则需要使用 Compile() 来生成一个 Runnable 接口。
+
+Runnable 的一个重要作用就是提供了 「Invoke」、「Stream」、「Collect」、「Transform」 四种调用方式。
+
+上述几种调用方式的介绍以及详细的 Runnable 介绍可以查看: Eino: 基础概念介绍
+
+假设我们有一个 Graph[[]*schema.Message, []*schema.Message]，里面有一个 ChatModel 节点，一个 Lambda 节点，Compile 之后是一个 Runnable[[]*schema.Message, []*schema.Message]。
+
+package main
+
+import (
+    "context"
+    "io"
+    "testing"
+
+    "github.com/cloudwego/eino/compose"
+    "github.com/cloudwego/eino/schema"
+    "github.com/stretchr/testify/assert"
+)
+
+func TestTypeMatch(t *testing.T) {
+    ctx := context.Background()
+
+    g1 := compose.NewGraph[[]*schema.Message, string]()
+    _ = g1.AddChatModelNode("model", &mockChatModel{})
+    _ = g1.AddLambdaNode("lambda", compose.InvokableLambda(func(_ context.Context, msg *schema.Message) (string, error) {
+       return msg.Content, nil
+    }))
+    _ = g1.AddEdge(compose.START, "model")
+    _ = g1.AddEdge("model", "lambda")
+    _ = g1.AddEdge("lambda", compose.END)
+
+    runner, err := g1.Compile(ctx)
+    assert.NoError(t, err)
+
+    c, err := runner.Invoke(ctx, []*schema.Message{
+       schema.UserMessage("what's the weather in beijing?"),
+    })
+    assert.NoError(t, err)
+    assert.Equal(t, "the weather is good", c)
+
+    s, err := runner.Stream(ctx, []*schema.Message{
+       schema.UserMessage("what's the weather in beijing?"),
+    })
+    assert.NoError(t, err)
+
+    var fullStr string
+    for {
+       chunk, err := s.Recv()
+       if err != nil {
+          if err == io.EOF {
+             break
+          }
+          panic(err)
+       }
+
+       fullStr += chunk
+    }
+    assert.Equal(t, c, fullStr)
+}
+当我们以 Stream 方式调用上面编译好的 Runnable 时，model 节点会输出 *schema.StreamReader[*Message]，但是 lambda 节点是 InvokableLambda，只接收非流式的 *schema.Message 作为输入。这也符合类型对齐规则，因为 Eino 框架会自动把流式的 Message 拼接成完整的 Message。
+
+在 stream 模式下，拼接帧 是一个非常常见的操作，拼接时，会先把 *StreamReader[T] 中的所有元素取出来转成 []T，再尝试把 []T 拼接成一个完整的 T。框架内已经内置支持了如下类型的拼接:
+
+*schema.Message: 详情见 schema.ConcatMessages()
+string: 实现逻辑等同于 +=
+[]*schema.Message: 详情见 compose.concatMessageArray()
+Map: 把相同 key 的 val 进行合并，合并逻辑同上，若存在无法合并的类型，则失败 (ps: 不是覆盖)
+Struct 或 Struct 指针：先转成 []map[string]any 的，再以 map 的逻辑合并。要求 struct 中不能有 unexported field。
+其他 slice：只有当 slice 中只有一个元素是非零值时，才能合并。
+对其他场景，或者当用户想用定制逻辑覆盖掉上面的默认行为时，开发者可自行实现 concat 方法，并使用 compose.RegisterStreamChunkConcatFunc() 注册到全局的拼接函数中。
+
+示例如下：
+
+// 假设我们自己的结构体如下
+type tStreamConcatItemForTest struct {
+    s string
+}
+
+// 实现一个拼接的方法
+func concatTStreamForTest(items []*tStreamConcatItemForTest) (*tStreamConcatItemForTest, error) {
+    var s string
+    for _, item := range items {
+        s += item.s
+    }
+
+    return &tStreamConcatItemForTest{s: s}, nil
+}
+
+func Init() {
+    // 注册到全局的拼接方法中
+    compose.RegisterStreamChunkConcatFunc(concatTStreamForTest)
+}
+类型对齐在运行时检查的场景
+eino 的 Graph 类型对齐检查，会在 err = graph.AddEdge("node1", "node2") 时检查两个节点类型是否匹配，也就能在 构建 graph 的过程，或 Compile 的过程 发现类型不匹配的错误，这适用于 Eino: 编排的设计理念 中所列举的 ① ② ③ 条规则。
+
+当上游节点的输出为 interface 时，若下游节点类型实现了该 interface，则上游有可能可以转成下游类型 (类型断言)，但只能在 运行过程 才能清楚能否转换成功，该场景的类型检查移到了运行过程中。
+
+其结构可见下图：
+
+
+
+这种场景适用于开发者能自行处理好上下游类型对齐的情况，可根据不同类型选择下游执行节点。
+
+带有明确倾向性的设计选择
+外部变量只读原则
+Eino 的 Graph 中的数据在 Node、Branch、Handler 间流转时，一律是变量赋值，不是 Copy。当 Input 是引用类型，如 Struct 指针、map、slice 时，在 Node、Branch、Handler 内部对 Input 的修改，会对外部有副作用，可能导致并发问题。因此，Eino 遵循外部变量只读原则：Node、Branch、Handler 内部不对 Input 做修改，如需修改，先自行 Copy。
+
+这个原则对 StreamReader 中的 Chunk 同样生效。
+
+扇入与合并
+扇入：多个上游的数据汇入到下游，一起作为下游的输入。需要明确定义多个上游的输出，如何合并（Merge）起来。Eino 的选择是，首先要求多个上游输出的实际类型必须相同且为可合并的类型。
+
+可合并的类型可以是：
+
+Map 类型，且相互间 key 不重复。
+任意类型，且通过 compose.RegisterValuesMergeFunc 注册了合并函数。
+其次：
+
+在非流式场景下，
+如果输入的类型有注册过合并函数，则使用注册的合并函数合并为一个值。
+如果输入的类型是 Map，则合并成为一个 Map，包含所有上游的所有键值对。
+在流式场景下，将类型相同的多个上游 StreamReader 合并为一个 StreamReader。实际 Recv 时从效果为从多个上游 StreamReader 中公平读取。
+在 AddNode 时，可以通过添加 WithOutputKey 这个 Option 来把节点的输出转成 Map：
+
+// 这个节点的输出，会从 string 改成 map[string]any，
+// 且 map 中只有一个元素，key 是 your_output_key，value 是实际的的节点输出的 string
+graph.AddLambdaNode("your_node_key", compose.InvokableLambda(func(ctx context.Context, input []*schema.Message) (str string, err error) {
+    // your logic
+    return
+}), compose.WithOutputKey("your_output_key"))
+也可以通过注册 Merge 方法来实现任意类型的 merge：
+
+// eino/compose/values_merge.go
+func RegisterValuesMergeFunc[T any](fn func([]T) (T, error))
+Workflow 可以做到多个上游的输出字段映射到下游节点的不同字段。Eino 内部会将上游输出的 Struct 转换为 Map，因此 Merge 依然符合上面的规则。
+
+流式处理
+Eino 认为，组件应当只需要实现业务场景中真实的流式范式，比如 ChatModel 不需要实现 Collect。因此，在编排场景中，Eino 自动帮助所有的节点补全缺失的流式范式。
+
+以 Invoke 方式运行 Graph，内部各节点均以 Invoke 范式运行，以 Stream, Collect 或 Transform 方式运行 Graph，内部各节点均以 Transform 范式运行。
+
+自动拼接(Concatenate)：Stream chunk 拼接为完整内容的场景，优先使用用户注册的自定义拼接函数，其次执行框架提供的默认行为，包括 Message, Message 数组，String，Map 和 Struct 及 Struct 指针。
+
+自动流化(Box)：需要将非流式的 T 变成 StreamReader[T] 的场景，框架自动执行。
+
+自动合并(Merge)：见上文“扇入与合并”环节。
+
+自动复制(Copy)：在需要做流的复制的场景自动进行流的复制，包括一个流扇出到多个下游节点，一个流进入一个或多个 callback handler。
+
+最后，Eino 要求所有编排元素能够感知和处理流。包括 branch，state handler，callback handler，passthrough，lambda 等。
+
+关于 Eino 对流的处理能力，详见 Eino 流式编程要点。
+
+全局状态
+State：在 NewGraph 时通过 compose.WithGenLocalState 传入 State 的创建方法。这个请求维度的全局状态在一次请求的各环节可读写使用。
+
+Eino 推荐用 StatePreHandler 和 StatePostHandler，功能定位是：
+
+StatePreHandler：在每个节点执行前读写 State，以及按需替换节点的 Input。输入需对齐节点的非流式输入类型。
+StatePostHandler：在每个节点执行后读写 State，以及按需替换节点的 Output。输入需对齐节点的非流式输出类型。
+针对流式场景，使用对应的 StreamStatePreHandler 和 StreamStatePostHandler，输入需分别对齐节点的流式输入和流式输出类型。
+
+这些 state handlers 位于节点外部，通过对 Input 或 Output 的修改影响节点，从而保证了节点的“状态无关”特性。
+
+如果需要在节点内部读写 State，Eino 提供了 ProcessState[S any](ctx context.Context**, handler func(context.Context, **S) error) error 函数。
+
+Eino 框架会在所有读写 State 的位置加锁。
+
+回调注入
+Eino 编排框架认为，进入编排的组件，可能内部埋入了 Callback 切面，也可以没有。这个信息由组件是否实现了 Checker 接口，以及接口中 IsCallbacksEnabled 方法的返回值来判断。
+
+当 IsCallbacksEnabled 返回 true 时，Eino 编排框架使用组件实现内部的 Callback 切面。
+否则，自动在组件实现外部包上 Callback 切面，（只能）上报 input 和 output。
+无论哪种，都会自动推断出 RunInfo。
+
+同时，对 Graph 整体，也一定会注入 Callback 切面，RunInfo 为 Graph 自身。
+
+关于 Eino 的 Callback 能力完整说明，见 Eino: Callback 用户手册。
+
+Option 分配
+Eino 支持各种维度的 Call Option 分配方式：
+
+默认全局，即分配到所有节点，包括嵌套的内部图。
+可添加某个组件类型的 Option，这时默认分配到该类型的所有节点，比如 AddChatModelOption。定义了独有 Option 类型的 Lambda，也可以这样把 Option 指定到自身。
+可指定任意个具体的节点，使用 DesignateNode(key ...string).
+可指定任意深度的嵌套图，或者其中的任意个具体的节点，使用 DesignateNodeWithPath(path ...*NodePath).
+关于 Eino 的 Call Option 能力完整说明，见 Eino: CallOption 能力与规范。
+
+图嵌套
+图编排产物 Runnable 与 Lambda 的接口形式非常相似。因此编译好的图可以简单的封装为 Lambda，并以 Lambda 节点的形式嵌套进其他图中。
+
+另一种方式，在编译前，Graph，Chain，Workflow 等都可以直接通过 AddGraph 的方式嵌套进其他图中。两个方式的差异是：
+
+Lambda 的方式，在 trace 上会多一级 Lambda 节点。其他 Callback handler 视角看也会多一层。
+Lambda 的方式，需要通过 Lambda 的 Option 来承接 CallOption，无法通过 DesignateNodeWithPath。
+Lambda 的方式，内部图需事先编译。直接 AddGraph，则内部图随上级图一起编译。
+内部机制
+执行时序
+以一个添加了 StatePreHandler、StatePostHandler、InputKey、OutputKey，且内部没有实现 Callback 切面的 InvokableLambda（输入为 string，输出为 int）为例，在图中的流式执行完整时序如下：
+
+
+
+在 workflow 的场景中，字段映射发生在两个位置：
+
+在节点执行后的 StatePostHandler 以及“流复制”步骤后，每个下游需要的字段会分别抽取出来。
+在节点执行前的“合并”步骤之后、StatePreHandler 之前，会将抽取出来的上游字段值转换为当前节点的输入。
+运行引擎
+NodeTriggerMode == AnyPredecessor 时，图以 pregel 引擎执行，对应的拓扑结构是有向有环图。特点是：
+
+当前执行中的一个或多个节点，所有的后序节点，作为一个 SuperStep，整体一起执行。这时，这些新的节点，会成为“当前”节点。
+支持 Branch，支持图中有环，但是可能需要人为添加 passthrough 节点，来确保 SuperStep 中的节点符合预期，如下图：
+
+
+上图中 Node 4 和 Node 5 按规则被放在一起执行，大概率不符合预期。需要改成：
+
+
+
+NodeTriggerMode == AllPredecessor 时，图以 dag 引擎执行，对应的拓扑结构是有向无环图。特点是：
+
+每个节点有确定的前序节点，当所有前序节点都完成后，本节点才具备运行条件。
+不支持图中有环，因为会打破“每个节点有确定的前序节点”这一假定。
+支持 Branch。在运行时，将 Branch 未选中的节点记为已跳过，不影响 AllPredecessor 的语义。
+不需要手动对齐 SuperStep。
+💡 设置 NodeTriggerMode == AllPredecessor 后，节点会在所有前驱就绪后执行，但并不是立即执行，而是依然遵循 SuperStep——在一批节点全部执行完成后再运行新的可运行节点。
+
+如果在 Compile 是传入 compose.WithEagerExecution()，则就绪的节点会立刻运行。
+
+总结起来，pregel 模式灵活强大但有额外的心智负担，dag 模式清晰简单但场景受限。在 Eino 框架中，Chain 是 pregel 模式，Workflow 是 dag 模式，Graph 则都支持，可由用户从 pregel 和 dag 中选择。

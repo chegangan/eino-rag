@@ -1,0 +1,43 @@
+# 通用忽略规则
+*.log
+*.tmp
+*.swp
+*.swo
+*.bak
+*.old
+*.orig
+*.rej
+*.sublime-workspace
+*.sublime-project
+*.DS_Store
+*.idea/
+*.vscode/
+*.env
+.env.*
+node_modules/
+dist/
+build/
+coverage/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+.eggs/
+*.out
+*.class
+*.o
+*.so
+*.a
+*.exe
+
+# Go相关
+bin/
+vendor/
+*.test
+*.exe
+*.dll
+*.dylib
+
+## 忽略 rag/qdrant_storage 文件夹
+rag/qdrant_storage/
