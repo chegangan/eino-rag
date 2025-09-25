@@ -37,8 +37,8 @@ const (
 	DocMetaDataVector = "embedding_vector" // 用于在 Document.MetaData 中存储向量的键
 	QdrantPayloadKey  = "content"          // 用于在 Qdrant Payload 中存储文档内容的键
 
-	BaseURL        = "https://api.siliconflow.cn/v1"                       // OpenAI API 基础 URL
-	OpenAIAPIKey   = "sk-sgqsukbjugibutigmmdwpeyzgkmazmajqvohpkblytwfigxc" // 务必替换为你的 OpenAI API Key
+	BaseURL        = "https://api.siliconflow.cn/v1" // OpenAI API 基础 URL
+	OpenAIAPIKey   = ""                              // 务必替换为你的 OpenAI API Key
 	EmbeddingModel = "BAAI/bge-m3"
 	LLMModel       = "Qwen/Qwen3-8B"
 	Timeout        = 60 * time.Second

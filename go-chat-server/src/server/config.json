@@ -1,6 +1,6 @@
 {
-    "system_prompt": "请你将用户输入转换为英文",
-    "api_key": "AIzaSyBn3WC2gFTcBAthxJ4w9Cn3SpmW_EwgPJw",
+    "system_prompt": "你是一位资深的golang代码编写师，请你认真回答用户的问题，为用户编写高效、可靠的代码。",
+    "api_key": "",
     "base_url": "https://generativelanguage.googleapis.com/v1beta/openai/",
     "model_name": "gemini-2.5-flash"
 }

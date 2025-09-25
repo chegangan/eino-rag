@@ -10,7 +10,7 @@ import (
 
 var (
 	OPENAI_BASE_URL   = "https://api.siliconflow.cn/v1"
-	OPENAI_API_KEY    = "sk-vlceodtoddldfmvszlpbndqnnxnuoiucesqybnnojfpwbroq"
+	OPENAI_API_KEY    = ""
 	OPENAI_MODEL_NAME = "Qwen/Qwen3-8B"
 )
 

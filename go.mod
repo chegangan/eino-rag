@@ -1,6 +1,6 @@
-module eino-test
+module eino-rag
 
-go 1.24.5
+go 1.25.1
 
 require (
 	github.com/cloudwego/eino v0.4.0
@@ -11,6 +11,7 @@ require (
 )
 
 require (
+	github.com/bytedance/gopkg v0.1.3 // indirect
 	golang.org/x/net v0.28.0 // indirect
 	golang.org/x/text v0.21.0 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20240827150818-7e3bb234dfed // indirect
@@ -18,9 +19,9 @@ require (
 )
 
 require (
-	github.com/bytedance/sonic v1.13.2 // indirect
-	github.com/bytedance/sonic/loader v0.2.4 // indirect
-	github.com/cloudwego/base64x v0.1.5 // indirect
+	github.com/bytedance/sonic v1.14.1 // indirect
+	github.com/bytedance/sonic/loader v0.3.0 // indirect
+	github.com/cloudwego/base64x v0.1.6 // indirect
 	github.com/cloudwego/eino-ext/components/embedding/openai v0.0.0-20250801075622-6721dae36fe9
 	github.com/cloudwego/eino-ext/libs/acl/openai v0.0.0-20250728034832-de7648551801 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
