@@ -1,0 +1,6 @@
+{
+    "system_prompt": "请你将用户输入转换为英文",
+    "api_key": "AIzaSyBn3WC2gFTcBAthxJ4w9Cn3SpmW_EwgPJw",
+    "base_url": "https://generativelanguage.googleapis.com/v1beta/openai/",
+    "model_name": "gemini-2.5-flash"
+}

@@ -1,0 +1,458 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Go Chat Server</title>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <style>
+        :root {
+            --border-color: #e6e6e6;
+            --bg-color: #f5f7fb;
+            --panel-bg: #ffffff;
+            --user-msg-bg: #ecf5ff;
+            --assistant-msg-bg: #ffffff;
+            --primary-color: #3b82f6;
+            --primary-hover-color: #2563eb;
+            --text-color: #1f2937;
+            --subtle-text: #6b7280;
+            --shadow: 0 6px 20px rgba(0, 0, 0, 0.06);
+        }
+
+        body {
+            font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            margin: 0;
+            background-color: var(--bg-color);
+            display: flex;
+            height: 100vh;
+            overflow: hidden;
+            color: var(--text-color);
+        }
+
+        .container {
+            display: flex;
+            width: 100%;
+        }
+
+        .chat-section {
+            flex: 3;
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            border-right: 1px solid var(--border-color);
+            background: radial-gradient(1200px 600px at -10% -20%, #eef2ff, transparent),
+                radial-gradient(1000px 500px at 120% -10%, #e0f2fe, transparent);
+        }
+
+        .chat-header {
+            padding: 1rem;
+            border-bottom: 1px solid var(--border-color);
+            font-size: 1.2rem;
+            font-weight: 600;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: var(--panel-bg);
+            position: sticky;
+            top: 0;
+            z-index: 2;
+        }
+
+        #chat {
+            flex-grow: 1;
+            overflow-y: auto;
+            padding: 1.2rem 1.2rem 0.5rem 1.2rem;
+        }
+
+        .message {
+            margin: 0.75rem 0;
+            padding: 0.9rem 1.05rem;
+            border-radius: 12px;
+            max-width: 80%;
+            line-height: 1.6;
+            box-shadow: var(--shadow);
+            white-space: pre-wrap;
+            /* 保留换行 */
+        }
+
+        .user-message {
+            background-color: var(--user-msg-bg);
+            align-self: flex-end;
+            margin-left: auto;
+            border: 1px solid #dbeafe;
+        }
+
+        .assistant-message {
+            background-color: var(--assistant-msg-bg);
+            align-self: flex-start;
+            border: 1px solid var(--border-color);
+        }
+
+        .input-area {
+            padding: 1rem;
+            border-top: 1px solid var(--border-color);
+            display: flex;
+            gap: 0.75rem;
+            background: var(--panel-bg);
+        }
+
+        #userInput {
+            flex-grow: 1;
+            padding: 0.9rem 1rem;
+            border: 1px solid var(--border-color);
+            border-radius: 10px;
+            resize: none;
+            min-height: 48px;
+            max-height: 180px;
+            outline: none;
+            box-shadow: var(--shadow);
+            font-size: 0.95rem;
+            color: var(--text-color);
+            background: #fff;
+        }
+
+        #sendButton {
+            width: 100px;
+            height: 48px;
+            border-radius: 10px;
+            box-shadow: var(--shadow);
+        }
+
+        .settings-section {
+            flex: 1.2;
+            padding: 1.25rem 1.25rem 2rem;
+            background-color: var(--panel-bg);
+            overflow-y: auto;
+            border-left: 1px solid var(--border-color);
+        }
+
+        .setting-group {
+            margin-bottom: 1.25rem;
+        }
+
+        .setting-group label {
+            display: block;
+            margin-bottom: 0.5rem;
+            font-weight: 500;
+            color: var(--subtle-text);
+        }
+
+        .setting-group input,
+        .setting-group textarea {
+            width: calc(100% - 1.6rem);
+            padding: 0.8rem;
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            box-shadow: var(--shadow);
+        }
+
+        .setting-group textarea {
+            height: 100px;
+            resize: vertical;
+        }
+
+        button {
+            background-color: var(--primary-color);
+            color: white;
+            border: none;
+            padding: 0.8rem 1rem;
+            border-radius: 10px;
+            cursor: pointer;
+            width: 100%;
+            font-size: 1rem;
+            transition: background-color 0.2s;
+            box-shadow: var(--shadow);
+        }
+
+        button:hover {
+            background-color: var(--primary-hover-color);
+        }
+
+        button:disabled {
+            background-color: #cccccc;
+            cursor: not-allowed;
+        }
+
+        #clearHistoryBtn {
+            background-color: #6c757d;
+        }
+
+        #clearHistoryBtn:hover {
+            background-color: #5a6268;
+        }
+
+        .status {
+            margin-top: 1rem;
+            padding: 0.8rem;
+            border-radius: 4px;
+            text-align: center;
+            display: none;
+        }
+
+        .success {
+            background-color: #d4edda;
+            color: #155724;
+        }
+
+        .error {
+            background-color: #f8d7da;
+            color: #721c24;
+        }
+
+        /* For markdown rendering */
+        .assistant-message pre {
+            background-color: #2d2d2d;
+            color: #f8f8f2;
+            padding: 1rem;
+            border-radius: 5px;
+            overflow-x: auto;
+            white-space: pre;
+            /* 代码块保持原样 */
+        }
+
+        .assistant-message code:not(pre > code) {
+            background-color: #e0e0e0;
+            padding: 2px 4px;
+            border-radius: 3px;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <div class="chat-section">
+            <div class="chat-header">
+                <span>Chat</span>
+                <button id="clearHistoryBtn" style="width: auto;">Clear History</button>
+            </div>
+            <div id="chat"></div>
+            <div class="input-area">
+                <textarea id="userInput" placeholder="Type your message here... (Shift+Enter for new line)"></textarea>
+                <button id="sendButton">Send</button>
+            </div>
+        </div>
+        <div class="settings-section">
+            <h3>Settings</h3>
+
+            <div class="setting-group">
+                <label for="systemPrompt">System Prompt:</label>
+                <textarea id="systemPrompt" placeholder="e.g., You are a helpful assistant."></textarea>
+                <button onclick="updatePrompt()" style="margin-top: 0.5rem;">Update Prompt</button>
+            </div>
+
+            <div class="setting-group">
+                <label for="apiKey">API Key:</label>
+                <input type="password" id="apiKey" placeholder="Enter your API key">
+            </div>
+
+            <div class="setting-group">
+                <label for="baseUrl">Base URL:</label>
+                <input type="text" id="baseUrl" placeholder="e.g., https://api.openai.com/v1">
+            </div>
+
+            <div class="setting-group">
+                <label for="modelName">Model Name:</label>
+                <input type="text" id="modelName" placeholder="e.g., gpt-4">
+            </div>
+
+            <button onclick="updateConfig()">Update Configuration</button>
+
+            <div id="status" class="status"></div>
+        </div>
+    </div>
+
+    <script>
+        const chatDiv = document.getElementById('chat');
+        const userInput = document.getElementById('userInput');
+        const sendButton = document.getElementById('sendButton');
+        const statusDiv = document.getElementById('status');
+        const clearHistoryBtn = document.getElementById('clearHistoryBtn');
+
+        window.onload = loadConfig;
+
+        function loadConfig() {
+            fetch('/get-config')
+                .then(response => response.json())
+                .then(data => {
+                    document.getElementById('systemPrompt').value = data.system_prompt || '';
+                    document.getElementById('baseUrl').value = data.base_url || '';
+                    document.getElementById('modelName').value = data.model_name || '';
+                })
+                .catch(error => console.error('Error loading config:', error));
+        }
+
+        // 让输入框随内容自适应高度
+        userInput.addEventListener('input', () => {
+            userInput.style.height = 'auto';
+            userInput.style.height = Math.min(userInput.scrollHeight, 180) + 'px';
+        });
+
+        // 将文本中代码块外出现的 "\n" 转换为真实换行
+        function normalizeNewlinesOutsideCode(text) {
+            if (!text) return text;
+            // 分割保留代码块 ```...```
+            const parts = text.split(/(```[\s\S]*?```)/g);
+            for (let i = 0; i < parts.length; i++) {
+                const seg = parts[i];
+                if (seg.startsWith('```')) continue; // 代码块内不处理
+                // 将 \n 转为换行，避免把换行以字面量展示
+                parts[i] = seg.replace(/\\n/g, '\n');
+            }
+            return parts.join('');
+        }
+
+        function renderAssistantMarkdown(text) {
+            return marked.parse(normalizeNewlinesOutsideCode(text));
+        }
+
+        function sendMessage() {
+            const message = userInput.value.trim();
+            if (message === '') return;
+
+            appendMessage('user', message);
+            userInput.value = '';
+            sendButton.disabled = true;
+
+            const assistantMsgDiv = appendMessage('assistant', '');
+            // Consume Server-Sent Events stream
+            fetch('/send', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ message }),
+            }).then(response => {
+                if (!response.ok || !response.body) {
+                    return response.text().then(text => { throw new Error(text || 'Network error'); });
+                }
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
+                let buffer = '';
+                let assistantBuffer = '';
+                function pump() {
+                    reader.read().then(({ done, value }) => {
+                        if (done) {
+                            sendButton.disabled = false;
+                            return;
+                        }
+                        buffer += decoder.decode(value, { stream: true });
+                        // Parse SSE: events are lines starting with 'data:' and separated by blank lines
+                        const parts = buffer.split('\n\n');
+                        // keep last partial chunk in buffer
+                        buffer = parts.pop();
+                        for (const part of parts) {
+                            const lines = part.split('\n');
+                            const dataLines = lines.filter(l => l.startsWith('data: ')).map(l => l.slice(6));
+                            const eventLine = lines.find(l => l.startsWith('event: '));
+                            const event = eventLine ? eventLine.slice(7) : 'message';
+                            const data = dataLines.join('\n');
+                            if (event === 'error') {
+                                assistantMsgDiv.innerText = `Error: ${data}`;
+                                sendButton.disabled = false;
+                                return;
+                            }
+                            if (event === 'done') {
+                                sendButton.disabled = false;
+                                continue;
+                            }
+                            // Accumulate then render to avoid broken HTML when markdown splits across chunks
+                            assistantBuffer += data;
+                            assistantMsgDiv.innerHTML = renderAssistantMarkdown(assistantBuffer);
+                            chatDiv.scrollTop = chatDiv.scrollHeight;
+                        }
+                        pump();
+                    }).catch(err => {
+                        assistantMsgDiv.innerText = `Error: ${err.message}`;
+                        sendButton.disabled = false;
+                    });
+                }
+                pump();
+            }).catch(err => {
+                assistantMsgDiv.innerText = `Error: ${err.message}`;
+                sendButton.disabled = false;
+            });
+        }
+
+        sendButton.addEventListener('click', sendMessage);
+        userInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                sendMessage();
+            }
+        });
+
+        clearHistoryBtn.addEventListener('click', () => {
+            fetch('/clear-history', { method: 'POST' })
+                .then(response => {
+                    if (response.ok) {
+                        chatDiv.innerHTML = '';
+                        showStatus('History cleared', 'success');
+                    } else {
+                        showStatus('Failed to clear history', 'error');
+                    }
+                });
+        });
+
+        function appendMessage(role, content) {
+            const messageDiv = document.createElement('div');
+            messageDiv.classList.add('message', `${role}-message`);
+            if (role === 'assistant') {
+                // 助手消息以 Markdown 渲染，并修复换行显示
+                messageDiv.innerHTML = renderAssistantMarkdown(content);
+            } else {
+                // 用户消息以纯文本显示并保留换行，避免 XSS & 意外解析
+                messageDiv.textContent = content;
+            }
+            chatDiv.appendChild(messageDiv);
+            chatDiv.scrollTop = chatDiv.scrollHeight;
+            return messageDiv;
+        }
+
+        function updatePrompt() {
+            const prompt = document.getElementById('systemPrompt').value;
+            fetch('/update-prompt', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ prompt: prompt }),
+            })
+                .then(handleResponse)
+                .then(() => showStatus('System prompt updated successfully!', 'success'))
+                .catch(err => showStatus(err.message, 'error'));
+        }
+
+        function updateConfig() {
+            const config = {
+                api_key: document.getElementById('apiKey').value,
+                base_url: document.getElementById('baseUrl').value,
+                model_name: document.getElementById('modelName').value,
+            };
+
+            fetch('/update-config', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(config),
+            })
+                .then(handleResponse)
+                .then(() => {
+                    showStatus('Configuration updated successfully!', 'success');
+                    document.getElementById('apiKey').value = ''; // Clear for security
+                })
+                .catch(err => showStatus(err.message, 'error'));
+        }
+
+        function handleResponse(response) {
+            if (!response.ok) {
+                return response.text().then(text => { throw new Error(text || 'Request failed'); });
+            }
+            return response.text();
+        }
+
+        function showStatus(message, type) {
+            statusDiv.textContent = message;
+            statusDiv.className = `status ${type}`;
+            statusDiv.style.display = 'block';
+            setTimeout(() => { statusDiv.style.display = 'none'; }, 3000);
+        }
+    </script>
+</body>
+
+</html>
